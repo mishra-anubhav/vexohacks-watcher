@@ -1,0 +1,28 @@
+# secrets
+.env
+.env.*
+
+# the Vexo kit is provided by the organisers (clone it into vexo-open-kit/)
+vexo-open-kit/
+
+# environments and dependencies
+.venv/
+__pycache__/
+node_modules/
+.DS_Store
+
+# recordings of real people and incident logs (room speech): never published
+recording.ogg
+events.jsonl
+incidents/
+agents/audio/
+agents/frames/
+bridge/frame_*.jpg
+
+# third-party video (downloaded locally for testing, see README)
+media/*.mp4
+media/*_audio.ogg
+
+# empty placeholder folders
+dashboard/
+agents/test/live/frame45.jpg

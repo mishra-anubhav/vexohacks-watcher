@@ -1,0 +1,37 @@
+/* Design tokens from DESIGN.md (shared by the landing page and the live board). */
+:root {
+  --cream: #fbfaf4; --paper: #fcfbf7; --ink: #0e1113; --muted: #f2f1ea; --muted-fg: #5d6366;
+  --border: rgba(14, 17, 19, .12);
+  --rosewood: #cc9087; --sage: #adb49c; --teal: #c3d3ce; --sand: #d6d0c3; --peach: #f8dbca;
+  --dusty-pink: #b6969d; --terracotta: #db704c; --forest: #181e1d; --clay: #d53712;
+  --ok: #3c8a52; --warn: #c2691a; --danger: #be3a2e; --info: #1e8c8c;
+  --dark-teal: #1c525d; --slate-blue: #344b5a;
+  --radius: 12px;
+  --sans: 'Inclusive Sans', ui-sans-serif, system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body { background: var(--cream); color: var(--ink); font-family: var(--sans); line-height: 1.45; -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: 2px solid var(--terracotta); outline-offset: 2px; }
+
+.label-pill { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .08em; color: rgba(14, 17, 19, .7); background: var(--muted);
+  border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; white-space: nowrap; }
+.on-dark .label-pill, .label-pill.on-dark { background: rgba(251, 250, 244, .1); color: var(--cream); border-color: rgba(251, 250, 244, .2); }
+
+.btn { font-family: var(--sans); font-size: 14px; font-weight: 500; border-radius: var(--radius); border: 1px solid var(--ink);
+  background: var(--ink); color: var(--cream); padding: 8px 16px; cursor: pointer; text-decoration: none; display: inline-flex;
+  align-items: center; gap: 8px; line-height: 1.2; }
+.btn:hover { background: rgba(14, 17, 19, .85); }
+.btn:disabled { opacity: .6; cursor: default; }
+.btn.outline { background: transparent; color: var(--ink); border-color: rgba(14, 17, 19, .2); }
+.btn.outline:hover { background: var(--muted); }
+.btn.reject { background: transparent; color: var(--danger); border-color: rgba(213, 55, 18, .4); }
+.btn.reject:hover { background: rgba(213, 55, 18, .1); }
+.btn.cream { background: var(--cream); color: var(--ink); border-color: var(--cream); }
+.btn.lg { height: 48px; padding: 0 20px; font-size: 16px; }
+
+/* logo: ink rounded square with a cream plus */
+.mark { width: 28px; height: 28px; border-radius: 8px; background: var(--ink); position: relative; display: inline-block; flex: none; }
+.mark::before, .mark::after { content: ''; position: absolute; background: var(--cream); border-radius: 2px; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.mark::before { width: 14px; height: 4px; } .mark::after { width: 4px; height: 14px; }

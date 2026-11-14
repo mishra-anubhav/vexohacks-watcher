@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incident Copilot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inclusive+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/tokens.css">
+<style>
+  body { margin: 0; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 18px; color: var(--ink); text-decoration: none; }
+
+  h1 { font-size: clamp(40px, 4.6vw, 64px); text-wrap: balance; font-weight: 500; letter-spacing: -0.02em; line-height: 1.02; margin: 24px 0 0; }
+  h2 { font-size: clamp(34px, 4vw, 48px); font-weight: 500; letter-spacing: -0.02em; line-height: 1.05; margin: 24px 0 0; }
+  h3 { font-size: 24px; font-weight: 500; letter-spacing: -0.01em; margin: 0; }
+  .lede { font-size: 18px; color: rgba(14, 17, 19, .75); max-width: 36rem; margin: 20px 0 0; }
+  .num { font-family: var(--mono); font-size: 14px; color: rgba(14, 17, 19, .6); }
+  section { padding: 48px 0; }
+
+  /* split hero: solid block + art field */
+  .split { display: grid; grid-template-columns: 1.05fr 1fr; border-radius: 24px; overflow: hidden; min-height: 560px; }
+  .block { padding: 48px; display: flex; flex-direction: column; justify-content: space-between; gap: 32px; }
+  .rosewood { background: var(--rosewood); } .terracotta { background: var(--terracotta); }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* art fields: blurred colour + soft horizontal light streaks */
+  .field { position: relative; overflow: hidden; display: grid; place-items: center; padding: 40px; isolation: isolate; }
+  .field::before { content: ''; position: absolute; inset: -20%; z-index: -2; filter: blur(40px); }
+  .field::after { content: ''; position: absolute; inset: 0; z-index: -1; opacity: .5; filter: blur(6px);
+    background: repeating-linear-gradient(180deg, transparent 0 46px, rgba(251, 250, 244, .35) 46px 49px, transparent 49px 110px); }
+  .ember::before { background: radial-gradient(40% 50% at 30% 30%, var(--terracotta), transparent 70%), radial-gradient(50% 50% at 75% 70%, var(--clay), transparent 70%), radial-gradient(60% 60% at 60% 20%, var(--peach), transparent 70%), var(--rosewood); }
+  .oasis::before { background: radial-gradient(50% 50% at 25% 70%, var(--dark-teal), transparent 70%), radial-gradient(45% 45% at 70% 30%, var(--sage), transparent 70%), var(--teal); }
+  .doodle { position: absolute; width: 72px; height: 72px; fill: none; stroke: var(--cream); stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* product mock floating on the art field (the one allowed shadow) */
+  .mock { width: min(400px, 100%); background: var(--cream); border-radius: 16px; padding: 16px; box-shadow: 0 25px 50px -12px rgba(14, 17, 19, .35); display: grid; gap: 10px; }
+  .mock .head { display: flex; justify-content: space-between; align-items: center; }
+  .mlabel { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: rgba(14, 17, 19, .6); }
+  .mcard { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--paper); font-size: 14px; }
+  .mcard .row { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .mcard .sub { color: var(--muted-fg); font-size: 12px; margin-top: 2px; }
+  .tri { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .08em; padding: 2px 8px; border-radius: 999px; color: var(--cream); }
+  .tri.red { background: var(--danger); } .tri.yellow { background: var(--warn); }
+  .mcoach { background: var(--sand); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+  .mmayday { background: rgba(213, 55, 18, .1); border: 1px solid rgba(213, 55, 18, .3); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+  .mmayday .mlabel { color: var(--danger); }
+
+  /* four colour blocks */
+  .blocks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 40px; }
+  .cblock { border-radius: 24px; padding: 28px; min-height: 260px; display: flex; flex-direction: column; justify-content: space-between; }
+  .cblock p { margin: 8px 0 0; font-size: 15px; color: rgba(14, 17, 19, .75); }
+  .sage { background: var(--sage); } .teal { background: var(--teal); } .sand { background: var(--sand); } .peach { background: var(--peach); }
+
+  /* dark feature block */
+  .forest { background: var(--forest); color: var(--cream); border-radius: 24px; padding: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+  .forest .lede { color: rgba(251, 250, 244, .7); }
+  .forest ul { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 10px; font-family: var(--mono); font-size: 13px; color: rgba(251, 250, 244, .6); }
+  .forest .mock { box-shadow: none; color: var(--ink); }
+
+  /* sponsors */
+  .sponsors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 40px; }
+  .sp { background: var(--paper); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; }
+  .sp .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .sp b { font-size: 20px; font-weight: 500; letter-spacing: -0.01em; }
+  .sp p { margin: 0; font-size: 15px; color: rgba(14, 17, 19, .75); }
+  .st { font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .st.live { background: rgba(173, 180, 156, .7); } .st.standby { background: var(--peach); } .st.thanks { background: var(--muted); color: var(--muted-fg); }
+  .note { margin-top: 16px; font-size: 14px; color: var(--muted-fg); }
+  footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 40px 0 56px; border-top: 1px solid var(--border); margin-top: 48px; }
+  @media (max-width: 960px) {
+    .split, .forest { grid-template-columns: 1fr; } .blocks { grid-template-columns: 1fr 1fr; }
+    .block, .forest { padding: 32px; } .split { min-height: 0; } .field { min-height: 420px; }
+  }
+  @media (max-width: 960px) { .sponsors { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .wrap { padding: 0 16px; } .blocks, .sponsors { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Incident Copilot</a>
+    <a class="btn" href="/app">Open the live board</a>
+  </nav>
+
+  <section style="padding-top: 8px">
+    <div class="split">
+      <div class="block rosewood">
+        <span class="label-pill" style="align-self: flex-start">Hackathon prototype · VexoHacks</span>
+        <div>
+          <h1>Responders talk.<br>The board fills itself.</h1>
+          <p class="lede">A wristband hears the radio. Agents build the incident picture and coach the crew.</p>
+        </div>
+        <div class="actions">
+          <a class="btn lg" href="/app">Open the live board</a>
+          <a class="btn lg outline" href="#how">See how it works</a>
+        </div>
+      </div>
+      <div class="field ember">
+        <svg class="doodle" style="top: 28px; right: 28px" viewBox="0 0 72 72"><path d="M36 8v12M36 52v12M8 36h12M52 36h12M16 16l8 8M48 48l8 8M56 16l-8 8M24 48l-8 8"/></svg>
+        <div class="mock" aria-label="Example board, fictional">
+          <div class="head"><span class="mlabel">412 Oak St · example · fictional</span><span class="mlabel">00:46</span></div>
+          <div class="mcard"><div class="row"><span class="tri red">RED</span>P1 · adult · floor 3</div><div class="sub">with MED-1 · not breathing · airway started</div></div>
+          <div class="mcard"><div class="row"><span class="tri yellow">YELLOW</span>P2 · child · floor 3</div><div class="sub">conscious · cough</div></div>
+          <div class="mcoach"><div class="mlabel">Coach → MED-1 · advisory</div>Start ventilations now; keep the airway open.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <span class="label-pill">How it works</span>
+    <h2>Four agents. One picture.</h2>
+    <div class="blocks">
+      <div class="cblock sage"><span class="num">01</span><div><h3>Intake</h3><p>Turns what responders say into patients, hazards and requests.</p></div></div>
+      <div class="cblock teal"><span class="num">02</span><div><h3>Vision</h3><p>Reads the body cam when a patient is reported.</p></div></div>
+      <div class="cblock sand"><span class="num">03</span><div><h3>Coach</h3><p>Tells a junior responder the next step. Command decides.</p></div></div>
+      <div class="cblock peach"><span class="num">04</span><div><h3>Report</h3><p>Writes the after-action review with exact times.</p></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="forest">
+      <div>
+        <span class="label-pill on-dark">Responder safety</span>
+        <h2>A fall goes quiet.<br>The mayday doesn't.</h2>
+        <ul>
+          <li>→ Fall and stillness, from the band</li>
+          <li>→ 10 seconds to double-tap "I'm OK"</li>
+          <li>→ Mayday spoken with the last words heard</li>
+        </ul>
+      </div>
+      <div class="mock">
+        <div class="mmayday"><div class="mlabel">Mayday · example · fictional</div>FIRE-CPT-1 down at 412 Oak Street. Last words: "Requesting a second ambulance and a ladder truck."</div>
+        <div class="mcard"><div class="mlabel" style="color: var(--ok)">Acknowledged</div>FIRE-CPT-1 double-tapped. No mayday sent.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="split" style="min-height: 360px">
+      <div class="block terracotta">
+        <span class="num" style="color: rgba(14,17,19,.7)">3 MINUTES</span>
+        <div><h2 style="margin: 0">Run the drill.<br>Read the report.</h2></div>
+        <div class="actions"><a class="btn lg" href="/app">Open the live board</a></div>
+      </div>
+      <div class="field oasis">
+        <svg class="doodle" style="bottom: 28px; left: 28px" viewBox="0 0 72 72"><path d="M14 38l14 14 30-32"/></svg>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span class="mlabel">Built with VEXO · Google DeepMind · MiniMax · Mastra · OpenAI · Deepgram</span>
+    <span class="mlabel">Prototype · not for operational use</span>
+  </footer>
+</div>
+</body>
+</html>

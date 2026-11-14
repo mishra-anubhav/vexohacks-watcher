@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incident Copilot · Live board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inclusive+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/tokens.css">
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { display: grid; grid-template-rows: auto 1fr; gap: 12px; padding: 12px 16px 16px; font-size: 14px; }
+
+  /* top bar */
+  #topbar { display: flex; align-items: center; gap: 14px; }
+  #topbar .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
+  #topbar .brand b { font-weight: 500; font-size: 18px; letter-spacing: -0.01em; }
+  #topbar .spacer { flex: 1; }
+  #incident { display: inline-flex; align-items: center; gap: 8px; }
+  #over { background: var(--peach); color: var(--ink); font-size: 13px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+  .notice { font-size: 13px; color: var(--muted-fg); max-width: 360px; text-align: right; }
+  .notice.bad { color: var(--danger); }
+  #livepulse { width: 8px; height: 8px; border-radius: 50%; border: 2px solid rgba(14,17,19,.2); }
+  #livepulse.on { border: 0; background: var(--terracotta); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  /* layout (unchanged) */
+  #main { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(340px, 1fr); gap: 12px; min-height: 0; }
+  #left { display: grid; grid-template-rows: 1.25fr 1fr; gap: 12px; min-height: 0; }
+  section { background: var(--paper); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; position: relative; min-height: 0; display: flex; flex-direction: column; }
+  section > header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex: none; }
+  .tag { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: rgba(14,17,19,.6); font-weight: 500; }
+  .muted { color: var(--muted-fg); font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid rgba(14,17,19,.2); flex: none; }
+  .dot.on { border: 0; background: var(--ok); }
+
+  /* body cam: dark feature block */
+  #cam { background: var(--forest); border-color: var(--forest); }
+  #cam > header { position: absolute; top: 0; left: 0; right: 0; border: 0; z-index: 2; background: rgba(24,30,29,.72); }
+  #cam .tag { color: rgba(251,250,244,.7); }
+  #cam .muted { color: rgba(251,250,244,.6); font-family: var(--mono); font-size: 11px; }
+  #cam .dot { border-color: rgba(251,250,244,.3); }
+  #video { width: 100%; height: 100%; object-fit: contain; background: var(--forest); display: block; }
+  #clip { width: 100%; height: 100%; object-fit: contain; background: var(--forest); display: block; }
+  #sound { position: absolute; right: 12px; bottom: 12px; z-index: 3; font-size: 13px; padding: 6px 12px; }
+  #novideo { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(251,250,244,.6); text-align: center; padding: 20px; }
+
+  /* transcript */
+  #log { flex: 1; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .line { display: grid; grid-template-columns: 60px 92px 1fr; gap: 10px; align-items: baseline; }
+  .time { font-family: var(--mono); font-size: 11px; color: rgba(14,17,19,.5); font-variant-numeric: tabular-nums; }
+  .who { font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: 2px 7px; border-radius: 999px; background: var(--muted); color: var(--ink); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .who.FIRE-CPT-1 { background: var(--rosewood); } .who.MED-1 { background: var(--sage); } .who.PD-1 { background: var(--teal); }
+  .who.AI { background: rgba(182,150,157,.4); } .who.COACH { background: var(--sand); } .who.SYSTEM { background: var(--muted); }
+  .said { font-size: 15px; color: var(--ink); }
+  .sim { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; color: rgba(14,17,19,.5); border: 1px solid var(--border); border-radius: 999px; padding: 0 5px; margin-left: 6px; vertical-align: 2px; }
+  .partial .said { color: var(--muted-fg); font-style: italic; }
+  .ai .said, .coachline .said { font-size: 13px; color: rgba(14,17,19,.75); }
+  .ev .said { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+  .ev.fall .said, .ev.still .said { color: var(--warn); }
+  .ev.ack .said, .ev.cancel .said { color: var(--ok); }
+  .ev.mayday { background: rgba(213,55,18,.1); border: 1px solid rgba(213,55,18,.3); border-radius: 10px; padding: 6px 8px; }
+  .ev.mayday .said { color: var(--danger); }
+  .ev .words { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink); font-size: 14px; }
+  #countdown { margin-left: auto; font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .06em; color: var(--danger); text-transform: uppercase; }
+  #empty { color: var(--muted-fg); margin: auto; text-align: center; }
+
+  /* board */
+  #board { overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 18px; }
+  .group h2 { font-family: var(--mono); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: rgba(14,17,19,.6); margin: 0 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .group h2 .count { color: var(--ink); }
+  .counts { display: flex; gap: 6px; }
+  .pill { font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; padding: 2px 8px; border-radius: 999px; }
+  .pill.red { background: var(--danger); color: var(--cream); } .pill.yellow { background: var(--warn); color: var(--cream); }
+  .pill.green { background: var(--ok); color: var(--cream); } .pill.black { background: var(--ink); color: var(--cream); }
+  .pill.none { background: var(--muted); color: var(--muted-fg); }
+  .advisory { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; color: var(--muted-fg); background: var(--muted); border-radius: 999px; padding: 1px 8px; }
+  .card { background: var(--cream); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-bottom: 8px; }
+  .card.red { border-color: rgba(190,58,46,.35); } .card.yellow { border-color: rgba(194,105,26,.35); }
+  .card .title { font-size: 15px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+  .card .sub { color: var(--muted-fg); font-size: 13px; grid-column: 1; }
+  .card img { grid-row: 1 / span 4; grid-column: 2; width: 124px; height: 70px; object-fit: cover; border-radius: 8px; background: var(--forest); }
+  .card .vision { grid-column: 1 / -1; font-size: 12px; color: rgba(14,17,19,.7); background: var(--teal); border-radius: 8px; padding: 5px 8px; margin-top: 2px; }
+  .card .vision::before { content: 'CAMERA · '; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; color: rgba(14,17,19,.6); }
+  .item { background: var(--cream); border: 1px solid var(--border); border-radius: 10px; padding: 7px 10px; margin-bottom: 6px; display: flex; gap: 10px; align-items: baseline; font-size: 13px; }
+  .item .k { font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; padding: 1px 8px; border-radius: 999px; background: var(--muted); white-space: nowrap; }
+  .item.open .k { background: var(--peach); } .item.action .k { background: var(--teal); }
+  .item.done { background: rgba(173,180,156,.3); border-color: var(--sage); } .item.done .k { background: rgba(173,180,156,.7); }
+  .item .muted { font-size: 12px; }
+  .alert { border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--border); font-size: 14px; }
+  .alert.critical { background: rgba(213,55,18,.1); border-color: rgba(213,55,18,.3); }
+  .alert.warning { background: var(--peach); border-color: rgba(14,17,19,.08); }
+  .alert.info { background: rgba(173,180,156,.3); border-color: var(--sage); }
+  .alert .k, .coach .k { font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 3px; color: rgba(14,17,19,.6); }
+  .alert.critical .k { color: var(--danger); } .alert.info .k { color: var(--ok); }
+  .coach { background: var(--sand); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; }
+  .coach.safety .k { color: var(--warn); }
+  .coach .msg { font-weight: 500; font-size: 15px; margin-bottom: 4px; }
+  .coach ol { margin: 0; padding-left: 18px; color: rgba(14,17,19,.75); font-size: 13px; }
+  .none { color: var(--muted-fg); font-size: 13px; }
+  .micpill { font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; padding: 2px 9px; border-radius: 999px; }
+  .micpill.on { background: rgba(173,180,156,.7); color: var(--ink); }
+  .micpill.warn { background: var(--peach); color: var(--ink); }
+  .micpill.off { background: rgba(213,55,18,.15); color: var(--danger); }
+
+  /* report dialog */
+  #report { position: fixed; inset: 0; background: rgba(14,17,19,.6); display: none; z-index: 10; padding: 24px; }
+  #report.show { display: grid; place-items: center; }
+  #report .doc { background: var(--cream); color: var(--ink); width: min(860px, 100%); max-height: 100%; overflow-y: auto; border-radius: 24px; padding: 32px 40px; font-size: 15px; line-height: 1.55; border: 1px solid var(--border); }
+  #report .doc h1 { font-size: 30px; font-weight: 500; letter-spacing: -0.01em; margin: 6px 0 4px; }
+  #report .doc h2 { font-family: var(--mono); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: rgba(14,17,19,.6); margin: 26px 0 8px; padding-top: 14px; border-top: 1px solid var(--border); }
+  #report .doc ul { margin: 0; padding-left: 20px; } #report .doc li { margin: 2px 0; } #report .doc p { margin: 4px 0; color: rgba(14,17,19,.8); }
+  #report .bar { display: flex; justify-content: space-between; align-items: center; }
+  @media (max-width: 900px) { #main { grid-template-columns: 1fr; } body { height: auto; } #left { grid-template-rows: 300px 320px; } #boardpanel { min-height: 480px; } }
+</style>
+</head>
+<body>
+  <div id="topbar">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span><b>Incident Copilot</b></a>
+    <span class="label-pill" id="incident"><span id="livepulse"></span><span id="incidenttext">No incident</span></span>
+    <span class="spacer"></span>
+    <span class="notice" id="notice" role="status" aria-live="polite"></span>
+    <span class="label-pill" id="agentsline">agents · checking</span>
+    <button class="btn outline" id="demo">Run demo</button>
+    <button class="btn" id="start">Start incident</button>
+    <button class="btn outline" id="stop">Stop</button>
+    <button class="btn reject" id="end">End incident</button>
+  </div>
+
+  <div id="main">
+    <div id="left">
+      <section id="cam">
+        <header><span class="dot" id="camdot"></span><span class="tag">Body cam · FIRE-CPT-1</span><span class="muted" id="camstatus">connecting…</span></header>
+        <img id="video" src="/video.mjpg" alt="Body camera feed">
+        <video id="clip" playsinline muted preload="auto" hidden></video>
+        <button class="btn cream" id="sound" hidden>Sound on</button>
+        <div id="novideo">Waiting for the camera…</div>
+      </section>
+      <section id="talk">
+        <header><span class="dot" id="banddot"></span><span class="tag">Radio · transcript</span>
+          <span class="muted" id="bandstatus">waiting for the band…</span><span class="micpill off" id="mic">Mic off</span><span id="countdown"></span></header>
+        <div id="over" hidden>Incident ended — speech still shows here but is <b>not</b> processed. Click <b>Start incident</b> to continue.</div>
+        <div id="log"><div id="empty">Speak into the band. Responders' words appear here.</div></div>
+      </section>
+    </div>
+
+    <section id="boardpanel">
+      <header><span class="tag">Incident board</span><span class="muted" id="address"></span></header>
+      <div id="board">
+        <div class="group"><h2>Alerts</h2><div id="alerts"><div class="none">No alerts</div></div></div>
+        <div class="group"><h2>Coach <span class="advisory">ADVISORY — command decides</span></h2><div id="coach"><div class="none">No guidance yet</div></div></div>
+        <div class="group"><h2>Patients <span class="count" id="pcount">0</span> <span class="counts" id="tcounts"></span></h2><div id="patients"><div class="none">No patients reported</div></div></div>
+        <div class="group"><h2>Requests &amp; actions</h2><div id="requests"><div class="none">None</div></div></div>
+        <div class="group"><h2>Hazards</h2><div id="hazards"><div class="none">None</div></div></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="report"><div class="doc"><div class="bar"><span class="label-pill">After-action report</span><button class="btn outline" id="closereport">Close</button></div><div id="reportbody"></div></div></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const log = $('log');
+  let partialEl = null, started = null, lastState = null, live = false, lastBeat = 0;
+  setInterval(() => { if (Date.now() - lastBeat > 6000) { const m = $('mic'); m.className = 'micpill off'; m.textContent = 'Mic off · bridge not running'; } }, 2000);
+
+  // ---- camera
+  // A video file is played in the page itself (with its sound), kept in step with the server's
+  // copy, which is what the vision agent sees. Live cameras stay on the silent MJPEG feed.
+  const clip = $('clip');
+  let clipSetUp = false;
+  function syncClip(s) {
+    if (!s.video_url) return;
+    if (!clipSetUp) {
+      clipSetUp = true;
+      $('video').hidden = true; clip.hidden = false; $('sound').hidden = false;
+      clip.src = s.video_url; clip.loop = true;
+      clip.addEventListener('loadedmetadata', () => { clip.currentTime = s.video_pos || 0; clip.play().catch(() => {}); }, { once: true });
+    }
+    if (s.video_pos != null && clip.readyState >= 1) {
+      const drift = clip.currentTime - s.video_pos;
+      const wrap = clip.duration || 0;
+      if (Math.abs(drift) > 0.6 && !(wrap && Math.abs(Math.abs(drift) - wrap) < 1.5)) clip.currentTime = s.video_pos;
+      if (clip.paused) clip.play().catch(() => {});
+    }
+  }
+  $('sound').onclick = () => {
+    clip.muted = !clip.muted;
+    $('sound').textContent = clip.muted ? 'Sound on' : 'Sound off';
+    clip.play().catch(() => {});
+  };
+  async function camStatus() {
+    try {
+      const s = await (await fetch('/status')).json();
+      syncClip(s);
+      const none = !s.incident_id;
+      if (none) { $('stop').disabled = true; $('stop').title = 'No incident running'; if (!$('end').textContent.startsWith('Show')) $('end').disabled = true; $('incidenttext').textContent = 'No incident'; }
+      else if ($('end').textContent === 'End incident' || $('end').textContent === 'Click again to end') $('end').disabled = false;
+      const live = s.frame_age !== null && s.frame_age < 3;
+      $('camdot').classList.toggle('on', live);
+      $('camstatus').textContent = s.status;
+      $('novideo').style.display = live ? 'none' : 'grid';
+      $('novideo').textContent = live ? '' : s.status;
+    } catch (e) { $('camstatus').textContent = 'server not reachable'; }
+  }
+  setInterval(camStatus, 1000); camStatus();
+  $('video').onerror = () => setTimeout(() => { $('video').src = '/video.mjpg?' + Date.now(); }, 2000);
+
+  // ---- buttons
+  // Buttons: no browser pop-ups (embedded browsers block confirm()). A risky action asks for a
+  // second click on the same button instead, and every action says what happened.
+  function say(text, bad = false) { const n = $('notice'); n.textContent = text; n.className = 'notice' + (bad ? ' bad' : ''); clearTimeout(say.t); say.t = setTimeout(() => { n.textContent = ''; }, 6000); }
+  function twoStep(btn, label, confirmLabel, action) {
+    let armed = false, t = null;
+    btn.onclick = async () => {
+      if (btn.disabled) return;
+      if (!armed) { armed = true; btn.textContent = confirmLabel; t = setTimeout(() => { armed = false; btn.textContent = label; }, 4000); return; }
+      clearTimeout(t); armed = false; btn.textContent = label;
+      await action();
+    };
+  }
+  async function post(path) {
+    try { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); return r; }
+    catch { say('Server not reachable. Is server.py running?', true); return null; }
+  }
+  twoStep($('start'), 'Start incident', 'Click again: clear everything', async () => {
+    $('start').disabled = true; say('Starting a new incident…');
+    const r = await post('/incident/start');
+    if (r && r.ok) { location.reload(); return; }        // fresh page: no transcript, no board, no report
+    $('start').disabled = false; if (r) say('Could not start the incident (server answered ' + r.status + ').', true);
+  });
+  async function endIncident() {
+    $('end').textContent = 'Generating report…'; $('end').disabled = true; say('Ending the incident and writing the report (about 10 s)…');
+    const r = await post('/incident/end');
+    if (!r || !r.ok) {
+      $('end').textContent = 'End incident'; $('end').disabled = false;
+      if (r) say(r.status === 409 ? 'No incident is running. Click Start incident.' : 'End failed (' + r.status + ').', true);
+    }
+  }
+  let endArmed = null;
+  function endClick() {
+    if (endArmed) { clearTimeout(endArmed); endArmed = null; return endIncident(); }
+    $('end').textContent = 'Click again to end'; endArmed = setTimeout(() => { endArmed = null; if ($('end').textContent === 'Click again to end') $('end').textContent = 'End incident'; }, 4000);
+  }
+  $('end').onclick = endClick;
+  twoStep($('demo'), 'Run demo', 'Click again: run the 3-min script', async () => {
+    $('demo').disabled = true; say('Starting the scripted demo…');
+    const r = await post('/demo/start');
+    if (r && r.ok) { location.reload(); return; }
+    $('demo').disabled = false; if (r) say('Could not start the demo (' + r.status + ').', true);
+  });
+  twoStep($('stop'), 'Stop', 'Click again to stop', async () => {
+    const r = await post('/incident/stop');
+    if (r && r.ok) say('Incident stopped. The agents stopped listening.');
+    else if (r) say(r.status === 409 ? 'No incident is running. Click Start incident.' : 'Stop failed (' + r.status + ').', true);
+  });
+  const closeReport = () => $('report').classList.remove('show');
+  $('closereport').onclick = closeReport;
+  $('report').onclick = (ev) => { if (ev.target === $('report')) closeReport(); };       // click outside the document
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeReport(); });
+  function ended(why) {                    // incident over: Stop is off, Start is the next step
+    $('over').hidden = false;
+    $('livepulse').classList.remove('on'); $('stop').disabled = true; $('stop').title = why;
+    $('start').textContent = 'Start new incident';
+  }
+
+  // ---- transcript
+  const hhmmss = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour12: false });
+  function row(cls, ts, who, text, extra) {
+    $('empty')?.remove();
+    const r = el('div', 'line ' + cls);
+    const s = el('span', 'said', text);
+    if (extra) { const w = el('span', 'words', extra); w.style.display = 'block'; s.appendChild(w); }
+    r.append(el('span', 'time', hhmmss(ts)), el('span', 'who ' + (who || ''), who || ''), s);
+    return r;
+  }
+  function add(r) {
+    const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+    if (partialEl && partialEl.isConnected) log.insertBefore(r, partialEl); else log.appendChild(r);
+    if (stick) log.scrollTop = log.scrollHeight;
+  }
+  function setPartial(e) {
+    if (!partialEl || !partialEl.isConnected) { partialEl = row('partial', e.ts, e.responder, ''); log.appendChild(partialEl); }
+    partialEl.querySelector('.said').textContent = e.text;
+    log.scrollTop = log.scrollHeight;
+  }
+  const LABEL = { fall: 'Fall detected', still: 'No movement — countdown started', ack: 'Acknowledged — responder OK',
+                  cancel: 'Moving — alarm cancelled', mayday: 'MAYDAY — no response' };
+
+  // ---- board
+  function renderBoard(s) {
+    lastState = s;
+    $('address').textContent = s.address ? '· ' + s.address : '';
+    // alerts (newest first)
+    const A = $('alerts'); A.replaceChildren();
+    if (!s.alerts.length) A.append(el('div', 'none', 'No alerts'));
+    for (const a of [...s.alerts].reverse()) {
+      const d = el('div', 'alert ' + a.severity);
+      d.append(el('div', 'k', ({ mayday: 'Mayday', ack: 'Acknowledged', prealert: 'Hospital pre-alert' }[a.kind] || a.kind) + ' · ' + hhmmss(a.ts) + (a.audio ? ' · 🔊' : '')), el('div', '', a.text));
+      A.append(d);
+    }
+    // coach prompts (newest first)
+    const C = $('coach'); C.replaceChildren();
+    if (!(s.coaching || []).length) C.append(el('div', 'none', 'No guidance yet'));
+    for (const c of [...(s.coaching || [])].reverse()) {
+      const d = el('div', 'coach ' + c.priority);
+      d.append(el('div', 'k', '→ ' + (c.to === 'ALL' ? 'all crews' : c.to) + ' · ' + c.priority + ' · ' + hhmmss(c.ts) + (c.audio ? ' · 🔊' : '')), el('div', 'msg', c.message));
+      const ol = el('ol'); for (const step of c.steps) ol.append(el('li', '', step)); d.append(ol);
+      C.append(d);
+    }
+    // patients
+    const P = $('patients'); P.replaceChildren();
+    $('pcount').textContent = s.patients.length;
+    const T = $('tcounts'); T.replaceChildren();
+    for (const c of ['red', 'yellow', 'green', 'black']) { const n = s.patients.filter((p) => p.triage === c).length; if (n) T.append(el('span', 'pill ' + c, n + ' ' + c)); }
+    if (!s.patients.length) P.append(el('div', 'none', 'No patients reported'));
+    for (const p of s.patients) {
+      const c = el('div', 'card ' + (p.triage || ''));
+      c.dataset.id = p.id;
+      const title = el('div', 'title');
+      title.append(el('span', 'pill ' + (p.triage || 'none'), (p.triage || 'untriaged').toUpperCase()), document.createTextNode(` ${p.id} · ${p.age_group}` + (p.floor != null ? ` · floor ${p.floor}` : '')));
+      c.append(title);
+      if (p.image) { const img = el('img'); img.src = p.image; img.alt = 'camera frame when reported'; c.append(img); }
+      c.append(el('div', 'sub', [p.status, p.assigned_to && 'with ' + p.assigned_to, p.destination && '→ ' + p.destination + (p.eta_min != null ? ` (ETA ${p.eta_min} min)` : '')].filter(Boolean).join(' · ')));
+      if (p.conditions.length || p.notes.length) c.append(el('div', 'sub', [...p.conditions, ...p.notes].join(' · ')));
+      if (p.triage_history.length > 1) c.append(el('div', 'sub', 'triage: ' + p.triage_history.map((h) => h.to.toUpperCase()).join(' → ')));
+      if (p.vision) c.append(el('div', 'vision', p.vision));
+      P.append(c);
+    }
+    // requests and actions
+    const R = $('requests'); R.replaceChildren();
+    if (!s.requests.length) R.append(el('div', 'none', 'None'));
+    for (const r of s.requests) {
+      const d = el('div', 'item ' + (r.category === 'action' ? 'action' : r.status) + (r.status !== 'open' ? ' done' : ''));
+      d.append(el('span', 'k', r.category === 'action' ? 'Action' : r.status), el('span', '', r.description), el('span', 'muted', ' · ' + r.requested_by));
+      R.append(d);
+    }
+    // hazards
+    const H = $('hazards'); H.replaceChildren();
+    if (!s.hazards.length) H.append(el('div', 'none', 'None'));
+    for (const h of s.hazards) {
+      const d = el('div', 'item');
+      d.append(el('span', 'k', h.kind.replace(/_/g, ' ')), el('span', '', h.description + (h.floor != null ? ` (floor ${h.floor})` : '') + (h.location ? ` @ ${h.location}` : '')), el('span', 'muted', ' · ' + h.reported_by));
+      H.append(d);
+    }
+  }
+
+  // tiny, safe markdown: headings, lists, bold. Built with DOM nodes, never innerHTML.
+  function renderReport(md) {
+    const body = $('reportbody'); body.replaceChildren();
+    let ul = null;
+    const inline = (parent, text) => { text.split(/(\*\*[^*]+\*\*)/).forEach((part) => { if (part.startsWith('**') && part.endsWith('**')) parent.append(el('strong', '', part.slice(2, -2))); else parent.append(document.createTextNode(part)); }); return parent; };
+    for (const line of md.split('\n')) {
+      if (line.startsWith('- ')) { if (!ul) { ul = el('ul'); body.append(ul); } ul.append(inline(el('li'), line.slice(2))); continue; }
+      ul = null;
+      if (line.startsWith('# ')) body.append(el('h1', '', line.slice(2)));
+      else if (line.startsWith('## ')) body.append(el('h2', '', line.slice(3)));
+      else if (line.trim()) body.append(inline(el('p'), line));
+    }
+    $('report').classList.add('show');
+  }
+
+  function handle(e) {
+    switch (e.type) {
+      case 'incident_started':
+        if (e.demo) say('Scripted demo running: captain lines at 0:00, 0:20, 1:15 · falls at 1:30 and 2:00 · ~3 min. Click Sound on for the video.');
+        started = e.started || e.ts;
+        log.replaceChildren(el('div', '', '')); log.firstChild.id = 'empty'; log.firstChild.textContent = 'Incident started. Listening…';
+        $('incidenttext').textContent = 'Incident ' + (e.incident_id || '') + ' · ' + hhmmss(started); $('livepulse').classList.add('on');
+        renderBoard({ address: null, patients: [], hazards: [], requests: [], alerts: [], coaching: [] });
+        $('end').textContent = 'End incident'; $('end').disabled = false; $('end').onclick = endClick;
+        $('stop').disabled = false; $('stop').title = ''; $('start').textContent = 'Start incident';
+        $('report').classList.remove('show');
+        break;
+      case 'replay_done': live = true; break;
+      case 'bridge_status': {
+        lastBeat = Date.now();
+        if (e.band) { $('banddot').classList.add('on'); $('bandstatus').textContent = e.band + ' · listening'; }
+        const m = $('mic');
+        if (e.mic === 'on' && e.stt === 'live') { m.className = 'micpill on'; m.textContent = 'Mic on · transcribing'; }
+        else if (e.mic === 'on') { m.className = 'micpill warn'; m.textContent = 'Mic on · speech-to-text ' + e.stt; }
+        else { m.className = 'micpill off'; m.textContent = 'No audio from band'; }
+        break;
+      }
+      case 'stt_reconnected': add(row('ev cancel', e.ts, 'SYSTEM', 'Speech-to-text reconnected')); break;
+      case 'incident_stopped':
+        ended('This incident is already stopped. Start a new incident, or End incident for the report.'); $('countdown').textContent = '';
+        add(row('ev cancel', e.ts, 'SYSTEM', 'Incident stopped — agents stopped listening'));
+        break;
+      case 'transcript_partial': setPartial(e); break;
+      case 'transcript':
+        if (partialEl) { partialEl.remove(); partialEl = null; }
+        { const r = row('final', e.ts, e.responder, e.text); if (e.source === 'sim') r.querySelector('.said').append(el('span', 'sim', 'SIMULATED')); add(r); } break;
+      case 'board_change': add(row('ai', e.ts, 'AI', e.text)); break;
+      case 'coach': add(row('coachline', e.ts, 'COACH', '→ ' + (e.prompt.to === 'ALL' ? 'all crews' : e.prompt.to) + ': ' + e.prompt.message)); break;
+      case 'incident_state': renderBoard(e.state); break;
+      case 'band_connected': $('banddot').classList.add('on'); $('bandstatus').textContent = e.band + ' · listening'; break;
+      case 'band_disconnected': $('banddot').classList.remove('on'); $('bandstatus').textContent = 'band disconnected'; break;
+      case 'link': $('bandstatus').textContent = 'link ' + e.status; $('banddot').classList.toggle('on', e.status === 'back'); break;
+      case 'countdown': $('countdown').textContent = 'MAYDAY IN ' + e.left + 's — double-tap to cancel'; break;
+      case 'fall': case 'still': case 'ack': case 'cancel': case 'mayday':
+        if (e.type !== 'still' && e.type !== 'fall') $('countdown').textContent = '';
+        add(row('ev ' + e.type, e.ts, e.responder, LABEL[e.type], e.type === 'mayday' ? 'Last words: ' + (e.last_words || '(nothing heard)') : ''));
+        break;
+      case 'report_status': if (e.status === 'failed') { $('end').textContent = 'Report failed — retry'; $('end').disabled = false; } break;
+      case 'report':
+        ended('This incident has ended. Start a new incident to continue.');
+        $('end').textContent = 'Show report'; $('end').disabled = false; $('end').onclick = () => renderReport(e.markdown);
+        if (live) renderReport(e.markdown);       // pop up only when it arrives now, never on a page reload
+        break;
+    }
+  }
+  function connect() {
+    live = false;
+    const es = new EventSource('/stream');
+    es.onmessage = (m) => { try { handle(JSON.parse(m.data)); } catch (err) { console.error(err); } };
+    es.onerror = () => { es.close(); live = false; setTimeout(connect, 2000); };
+  }
+  connect();
+  async function agentsLine() {
+    try { const h = await (await fetch('http://127.0.0.1:4111/health')).json(); $('agentsline').textContent = 'Agents on · voice ' + (h.speech.minimax === 'on' ? 'MiniMax' : h.speech.elevenlabs === 'on' ? 'ElevenLabs' : 'Gemini'); }
+    catch { $('agentsline').textContent = 'Agents off'; }
+  }
+  agentsLine(); setInterval(agentsLine, 10000);
+</script>
+</body>
+</html>

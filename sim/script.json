@@ -1,0 +1,5 @@
+[
+  {"at": 40, "responder": "MED-1", "text": "Medic 1 taking the red patient, burns to both arms, starting airway."},
+  {"at": 60, "responder": "PD-1",  "text": "Oak and 3rd is blocked by debris, reroute units via Pine."},
+  {"at": 140, "responder": "MED-1", "text": "Red patient transporting to Valley Care ER, ETA 8 minutes."}
+]

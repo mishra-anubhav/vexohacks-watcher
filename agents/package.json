@@ -1,0 +1,18 @@
+{
+  "name": "incident-agents",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/service.ts",
+    "dev": "mastra dev",
+    "test": "node --test test/*.test.ts",
+    "test:live": "node --test --test-concurrency=1 test/live/*.test.ts"
+  },
+  "dependencies": {
+    "@mastra/core": "^1.83.0",
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.7"
+  }
+}
