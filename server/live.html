@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Incident Copilot · Live board</title>
+<title>Watcher · Live board</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inclusive+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/tokens.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   html, body { height: 100%; margin: 0; }
   body { display: grid; grid-template-rows: auto 1fr; gap: 12px; padding: 12px 16px 16px; font-size: 14px; }
@@ -18,12 +19,26 @@
   #topbar .brand b { font-weight: 500; font-size: 18px; letter-spacing: -0.01em; }
   #topbar .spacer { flex: 1; }
   #incident { display: inline-flex; align-items: center; gap: 8px; }
+  #cue { display: flex; align-items: baseline; gap: 10px; padding: 9px 14px; background: var(--teal); border-bottom: 1px solid var(--border); font-size: 15px; }
+  #cue.act { background: var(--sand); }
+  #cue .cuelabel { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgba(14,17,19,.6); white-space: nowrap; }
+  #cue #cuetext { flex: 1; font-weight: 500; }
+  #cue .cuetime { font-family: var(--mono); font-size: 12px; color: rgba(14,17,19,.7); white-space: nowrap; }
+  .demowrap { position: relative; display: inline-flex; }
+  /* anchored under the Run demo button; never wider than the screen */
+  .demomenu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; max-width: calc(100vw - 32px); background: var(--cream); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; display: grid; gap: 6px; width: 320px; }
+  .demomenu[hidden], #cue[hidden], #over[hidden] { display: none; }
+  #topbar .btn, #topbar .brand b, #topbar .label-pill { white-space: nowrap; }
+  #topbar .notice { flex: 0 1 300px; min-width: 0; font-size: 12px; line-height: 1.3; }
+  #topbar .demomenu .btn { white-space: normal; width: 100%; box-sizing: border-box; }
+  .demomenu { box-shadow: 0 12px 32px -12px rgba(14,17,19,.25); }
+  .demomenu button { text-align: left; justify-content: flex-start; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .demomenu small { font-weight: 400; color: var(--muted-fg); font-size: 12px; }
   #over { background: var(--peach); color: var(--ink); font-size: 13px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
   .notice { font-size: 13px; color: var(--muted-fg); max-width: 360px; text-align: right; }
   .notice.bad { color: var(--danger); }
   #livepulse { width: 8px; height: 8px; border-radius: 50%; border: 2px solid rgba(14,17,19,.2); }
-  #livepulse.on { border: 0; background: var(--terracotta); animation: pulse 1.6s ease-in-out infinite; }
-  @keyframes pulse { 50% { opacity: .35; } }
+  #livepulse.on { border: 0; background: var(--terracotta); }
 
   /* layout (unchanged) */
   #main { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(340px, 1fr); gap: 12px; min-height: 0; }
@@ -44,6 +59,15 @@
   #video { width: 100%; height: 100%; object-fit: contain; background: var(--forest); display: block; }
   #clip { width: 100%; height: 100%; object-fit: contain; background: var(--forest); display: block; }
   #sound { position: absolute; right: 12px; bottom: 12px; z-index: 3; font-size: 13px; padding: 6px 12px; }
+  .camswitch { margin-left: auto; display: inline-flex; background: rgba(251,250,244,.12); border-radius: 999px; padding: 2px; }
+  .camswitch button { font: 500 12px var(--sans); color: rgba(251,250,244,.75); background: none; border: 0; border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+  .camswitch button.on { background: var(--cream); color: var(--ink); }
+  #pair { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; background: rgba(24,30,29,.92); }
+  #pair[hidden] { display: none; }
+  .paircard { background: var(--cream); border-radius: 16px; padding: 18px; width: min(340px, 90%); display: grid; gap: 10px; justify-items: center; text-align: center; }
+  .paircard p { margin: 0; font-size: 13px; color: rgba(14,17,19,.75); }
+  #qr img, #qr canvas { width: 180px !important; height: 180px !important; }
+  .pairstat { font-family: var(--mono); font-size: 11px; color: rgba(14,17,19,.6); letter-spacing: .04em; }
   #novideo { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(251,250,244,.6); text-align: center; padding: 20px; }
 
   /* transcript */
@@ -112,17 +136,51 @@
   #report .doc h2 { font-family: var(--mono); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: rgba(14,17,19,.6); margin: 26px 0 8px; padding-top: 14px; border-top: 1px solid var(--border); }
   #report .doc ul { margin: 0; padding-left: 20px; } #report .doc li { margin: 2px 0; } #report .doc p { margin: 4px 0; color: rgba(14,17,19,.8); }
   #report .bar { display: flex; justify-content: space-between; align-items: center; }
-  @media (max-width: 900px) { #main { grid-template-columns: 1fr; } body { height: auto; } #left { grid-template-rows: 300px 320px; } #boardpanel { min-height: 480px; } }
+  /* Brief acknowledgements of real changes; the board stays quiet between events. */
+  @media (prefers-reduced-motion: no-preference) {
+    .btn, .camswitch button { transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease; }
+    .btn:active:not(:disabled), .camswitch button:active { transform: translateY(1px); }
+    .micpill, .dot, #livepulse, #cue { transition: background-color 240ms ease, border-color 240ms ease, color 240ms ease; }
+    #livepulse.on::after { content: ''; display: block; width: 100%; height: 100%; border: 1px solid var(--terracotta); border-radius: inherit; animation: signal-ring 2.4s ease-out 2; }
+    .event-arrive { animation: event-arrive 320ms cubic-bezier(.22,1,.36,1); }
+    .event-update { animation: event-update 850ms ease-out; }
+    .demomenu:not([hidden]), #pair:not([hidden]) .paircard { animation: panel-arrive 220ms cubic-bezier(.22,1,.36,1); }
+    #report.show { animation: veil-arrive 180ms ease-out; }
+    #report.show .doc { animation: panel-arrive 280ms cubic-bezier(.22,1,.36,1); }
+    #countdown:not(:empty) { animation: event-arrive 240ms ease-out; }
+    @keyframes signal-ring { from { transform: scale(1); opacity: .5; } to { transform: scale(2.5); opacity: 0; } }
+    @keyframes event-arrive { from { opacity: .72; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes event-update { 0%, 25% { outline: 2px solid rgba(14,17,19,.2); outline-offset: 2px; } 100% { outline: 2px solid transparent; outline-offset: 2px; } }
+    @keyframes panel-arrive { from { opacity: .75; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes veil-arrive { from { background-color: rgba(14,17,19,0); } to { background-color: rgba(14,17,19,.6); } }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+  @media (max-width: 760px) {
+    #topbar { flex-wrap: wrap; row-gap: 8px; }
+    #topbar .spacer { display: none; }
+    #topbar .notice { order: 10; flex: 1 1 100%; text-align: left; max-width: none; }
+    #agentsline { display: none; }
+  }
+  html, body { overflow-x: hidden; } #main, #left, section { min-width: 0; }
+    @media (max-width: 900px) { #main { grid-template-columns: 1fr; } body { height: auto; } #left { grid-template-rows: 300px 320px; } #boardpanel { min-height: 480px; } }
 </style>
 </head>
 <body>
   <div id="topbar">
-    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span><b>Incident Copilot</b></a>
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span><b>Watcher</b></a>
     <span class="label-pill" id="incident"><span id="livepulse"></span><span id="incidenttext">No incident</span></span>
     <span class="spacer"></span>
     <span class="notice" id="notice" role="status" aria-live="polite"></span>
     <span class="label-pill" id="agentsline">agents · checking</span>
-    <button class="btn outline" id="demo">Run demo</button>
+    <span class="demowrap">
+    <button class="btn outline" id="demo" aria-haspopup="true" aria-expanded="false">Run demo ▾</button>
+    <div class="demomenu" id="demomenu" hidden>
+      <button class="btn outline" id="demoscripted">Scripted voice<small>A pretend band speaks the captain's lines. No hardware.</small></button>
+      <button class="btn outline" id="demovexo">Live Vexo band<small>You are the captain on band 60. Cue cards tell you what to say and do.</small></button>
+    </div>
+    </span>
     <button class="btn" id="start">Start incident</button>
     <button class="btn outline" id="stop">Stop</button>
     <button class="btn reject" id="end">End incident</button>
@@ -131,7 +189,16 @@
   <div id="main">
     <div id="left">
       <section id="cam">
-        <header><span class="dot" id="camdot"></span><span class="tag">Body cam · FIRE-CPT-1</span><span class="muted" id="camstatus">connecting…</span></header>
+        <header><span class="dot" id="camdot"></span><span class="tag">Body cam · FIRE-CPT-1</span><span class="muted" id="camstatus">connecting…</span>
+          <span class="camswitch" id="camswitch" hidden><button id="srcvideo">Video clip</button><button id="srcphone">Phone camera</button></span></header>
+        <div id="pair" hidden>
+          <div class="paircard">
+            <span class="label-pill">Pair your phone</span>
+            <div id="qr"></div>
+            <p>Scan with the phone's camera, open the link, tap <b>Start camera</b>. The Vexo band stays the microphone.</p>
+            <span class="pairstat" id="pairstat">Waiting for the phone…</span>
+          </div>
+        </div>
         <img id="video" src="/video.mjpg" alt="Body camera feed">
         <video id="clip" playsinline muted preload="auto" hidden></video>
         <button class="btn cream" id="sound" hidden>Sound on</button>
@@ -140,6 +207,7 @@
       <section id="talk">
         <header><span class="dot" id="banddot"></span><span class="tag">Radio · transcript</span>
           <span class="muted" id="bandstatus">waiting for the band…</span><span class="micpill off" id="mic">Mic off</span><span id="countdown"></span></header>
+        <div id="cue" hidden><span class="cuelabel" id="cuelabel">Next</span><span id="cuetext"></span><span class="cuetime" id="cuetime"></span></div>
         <div id="over" hidden>Incident ended — speech still shows here but is <b>not</b> processed. Click <b>Start incident</b> to continue.</div>
         <div id="log"><div id="empty">Speak into the band. Responders' words appear here.</div></div>
       </section>
@@ -163,14 +231,92 @@
   const $ = (id) => document.getElementById(id);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const log = $('log');
-  let partialEl = null, started = null, lastState = null, live = false, lastBeat = 0;
+  let partialEl = null, started = null, lastState = null, live = false, lastBeat = 0, browserAudio = false, viewOnly = false;
+  const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function animateEvent(node, updated = false) {
+    // History replay and background tabs must not look like new activity.
+    if (!live || motionPreference.matches || document.hidden) return;
+    const name = updated ? 'event-update' : 'event-arrive';
+    node.classList.add(name);
+    const clear = () => node.classList.remove(name);
+    node.addEventListener('animationend', clear, { once: true });
+    node.addEventListener('animationcancel', clear, { once: true });
+  }
+  // Keep unchanged cards mounted, including their images and any in-flight motion.
+  // Each group's ids are stable; only a new/changed record gets a transition.
+  const boardGroups = new Map();
+  function syncGroup(id, records, emptyText, build) {
+    const container = $(id), previous = boardGroups.get(id) || new Map(), next = new Map();
+    let position = container.firstElementChild;
+    for (const record of records) {
+      const signature = JSON.stringify(record), existing = previous.get(record.id);
+      const unchanged = existing?.signature === signature;
+      const node = unchanged ? existing.node : build(record);
+      next.set(record.id, { signature, node });
+      if (node !== position) container.insertBefore(node, position);
+      position = node.nextElementSibling;
+      if (!unchanged) animateEvent(node, !!existing);
+    }
+    const kept = new Set([...next.values()].map(({ node }) => node));
+    for (const child of [...container.children]) if (!kept.has(child)) child.remove();
+    if (!records.length) container.append(el('div', 'none', emptyText));
+    boardGroups.set(id, next);
+  }
+  // Hosted: alerts and coaching are played by this page (the cloud has no speakers).
+  // Only after "Sound on" (browsers need a click), only live events, a mayday cuts in front.
+  const speechQueue = []; let speaking = null;
+  function playSpeech(e) {
+    if (!browserAudio || clip.muted || !live || !e.url) return;
+    if (e.kind === 'mayday') { speechQueue.unshift(e.url); if (speaking) speaking.pause(); speaking = null; }
+    else speechQueue.push(e.url);
+    nextSpeech();
+  }
+  function nextSpeech() {
+    if (speaking || !speechQueue.length) return;
+    speaking = new Audio(speechQueue.shift());
+    const done = () => { speaking = null; nextSpeech(); };
+    speaking.onended = done; speaking.onerror = done; speaking.onpause = () => { if (speaking && !speaking.ended) {} };
+    clip.volume = 0.35;                                      // duck the video under the voice
+    speaking.play().catch(done);
+  }
   setInterval(() => { if (Date.now() - lastBeat > 6000) { const m = $('mic'); m.className = 'micpill off'; m.textContent = 'Mic off · bridge not running'; } }, 2000);
 
   // ---- camera
   // A video file is played in the page itself (with its sound), kept in step with the server's
   // copy, which is what the vision agent sees. Live cameras stay on the silent MJPEG feed.
   const clip = $('clip');
-  let clipSetUp = false;
+  let clipSetUp = false, lastSeek = 0;
+  // Camera source: the video clip (played here, with sound) or the phone (frames via the server)
+  let camSource = null, pairLoaded = false;
+  function applyCamera(s) {
+    const src = s.camera_source;
+    if (s.can_write && s.has_video) $('camswitch').hidden = false;
+    $('srcvideo').classList.toggle('on', src === 'video'); $('srcphone').classList.toggle('on', src === 'phone');
+    if (src !== camSource) {
+      camSource = src;
+      if (src === 'phone') { clip.pause(); clip.hidden = true; $('video').hidden = false; $('video').src = '/video.mjpg?' + Date.now(); }
+      else if (src === 'video' && clipSetUp) { $('video').hidden = true; clip.hidden = false; clip.play().catch(() => {}); }
+    }
+    const waiting = src === 'phone' && (s.phone_age == null || s.phone_age > 5);
+    $('pair').hidden = !(waiting && s.can_write);
+    if (waiting && s.can_write && !pairLoaded) loadPairing();
+    if (src === 'phone') $('pairstat').textContent = s.phone_age == null ? 'Waiting for the phone…' : 'Phone stopped sending ' + Math.round(s.phone_age) + ' s ago';
+  }
+  async function loadPairing() {
+    pairLoaded = true;
+    try {
+      const j = await (await fetch('/camera/pair')).json();
+      $('qr').replaceChildren();
+      new QRCode($('qr'), { text: j.url, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+    } catch { pairLoaded = false; $('pairstat').textContent = 'Could not load the pairing code'; }
+  }
+  async function setSource(src) {
+    const r = await post('/camera/source', { source: src });
+    if (!r || !r.ok) say('Could not switch the camera' + (r ? ' (' + r.status + ')' : ''), true);
+  }
+  $('srcvideo').onclick = () => setSource('video');
+  $('srcphone').onclick = () => setSource('phone');
+
   function syncClip(s) {
     if (!s.video_url) return;
     if (!clipSetUp) {
@@ -179,12 +325,15 @@
       clip.src = s.video_url; clip.loop = true;
       clip.addEventListener('loadedmetadata', () => { clip.currentTime = s.video_pos || 0; clip.play().catch(() => {}); }, { once: true });
     }
-    if (s.video_pos != null && clip.readyState >= 1) {
+    // Loose sync: the video plays freely in the browser. Only a large drift (> 4 s, e.g. after the
+    // tab slept) is corrected, at most every 15 s and never while buffering: every seek makes the
+    // browser re-buffer, and tight sync over a network turned into a stutter loop.
+    if (s.video_pos != null && clip.readyState >= 3 && Date.now() - lastSeek > 15000) {
       const drift = clip.currentTime - s.video_pos;
       const wrap = clip.duration || 0;
-      if (Math.abs(drift) > 0.6 && !(wrap && Math.abs(Math.abs(drift) - wrap) < 1.5)) clip.currentTime = s.video_pos;
-      if (clip.paused) clip.play().catch(() => {});
+      if (Math.abs(drift) > 4 && !(wrap && Math.abs(Math.abs(drift) - wrap) < 4)) { clip.currentTime = s.video_pos; lastSeek = Date.now(); }
     }
+    if (clip.paused && clip.readyState >= 2) clip.play().catch(() => {});
   }
   $('sound').onclick = () => {
     clip.muted = !clip.muted;
@@ -194,7 +343,14 @@
   async function camStatus() {
     try {
       const s = await (await fetch('/status')).json();
+      applyCamera(s);
       syncClip(s);
+      browserAudio = !!s.browser_audio;
+      if (s.can_write === false && !viewOnly) {             // public viewer: watch only
+        viewOnly = true;
+        for (const id of ['demo', 'start', 'stop', 'end']) $(id).hidden = true;
+        $('incident').insertAdjacentElement('afterend', el('span', 'label-pill', 'View only'));
+      }
       const none = !s.incident_id;
       if (none) { $('stop').disabled = true; $('stop').title = 'No incident running'; if (!$('end').textContent.startsWith('Show')) $('end').disabled = true; $('incidenttext').textContent = 'No incident'; }
       else if ($('end').textContent === 'End incident' || $('end').textContent === 'Click again to end') $('end').disabled = false;
@@ -211,7 +367,7 @@
   // ---- buttons
   // Buttons: no browser pop-ups (embedded browsers block confirm()). A risky action asks for a
   // second click on the same button instead, and every action says what happened.
-  function say(text, bad = false) { const n = $('notice'); n.textContent = text; n.className = 'notice' + (bad ? ' bad' : ''); clearTimeout(say.t); say.t = setTimeout(() => { n.textContent = ''; }, 6000); }
+  function say(text, bad = false) { const n = $('notice'); n.textContent = text; n.className = 'notice' + (bad ? ' bad' : ''); animateEvent(n); clearTimeout(say.t); say.t = setTimeout(() => { n.textContent = ''; }, 6000); }
   function twoStep(btn, label, confirmLabel, action) {
     let armed = false, t = null;
     btn.onclick = async () => {
@@ -221,8 +377,8 @@
       await action();
     };
   }
-  async function post(path) {
-    try { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); return r; }
+  async function post(path, body = {}) {
+    try { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r; }
     catch { say('Server not reachable. Is server.py running?', true); return null; }
   }
   twoStep($('start'), 'Start incident', 'Click again: clear everything', async () => {
@@ -245,12 +401,70 @@
     $('end').textContent = 'Click again to end'; endArmed = setTimeout(() => { endArmed = null; if ($('end').textContent === 'Click again to end') $('end').textContent = 'End incident'; }, 4000);
   }
   $('end').onclick = endClick;
-  twoStep($('demo'), 'Run demo', 'Click again: run the 3-min script', async () => {
-    $('demo').disabled = true; say('Starting the scripted demo…');
-    const r = await post('/demo/start');
+  // Run demo: a menu with the two modes (choosing one is the confirmation)
+  $('demo').onclick = () => {
+    const m = $('demomenu'); m.hidden = !m.hidden; $('demo').setAttribute('aria-expanded', String(!m.hidden));
+    if (!m.hidden) {                       // keep it on screen: flip to the right edge if it would overflow
+      m.style.left = '0'; m.style.right = 'auto';
+      if (m.getBoundingClientRect().right > window.innerWidth - 16) { m.style.left = 'auto'; m.style.right = '0'; }
+    }
+  };
+  document.addEventListener('click', (ev) => { if (!ev.target.closest('.demowrap')) { $('demomenu').hidden = true; $('demo').setAttribute('aria-expanded', 'false'); } });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') $('demomenu').hidden = true; });
+  async function runDemo(mode) {
+    $('demomenu').hidden = true;
+    if (mode === 'vexo' && Date.now() - lastBeat > 6000) { say('Band 60 is not connected: run bridge/run.sh and double-tap the band first.', true); return; }
+    say(mode === 'vexo' ? 'Starting the live Vexo demo…' : 'Starting the scripted demo…');
+    const r = await post('/demo/start', { mode });
     if (r && r.ok) { location.reload(); return; }
-    $('demo').disabled = false; if (r) say('Could not start the demo (' + r.status + ').', true);
-  });
+    if (r) say('Could not start the demo (' + r.status + ').', true);
+  }
+  $('demoscripted').onclick = () => runDemo('scripted');
+  $('demovexo').onclick = () => runDemo('vexo');
+
+  // Cue cards: the 3-minute script, so the captain (or the presenter) always knows what comes next
+  const CUES = {
+    vexo: [
+      [0, 'say', 'Say: “Engine 2 on scene, 412 Oak Street, heavy smoke from the third floor.”'],
+      [20, 'say', 'Say: “Two victims on floor 3. One adult not breathing, one child conscious with a cough.”'],
+      [40, 'listen', 'Listen: MED-1 takes the red patient (simulated)'],
+      [60, 'listen', 'Listen: PD-1 reports Oak and 3rd blocked (simulated)'],
+      [75, 'say', 'Say: “Requesting a second ambulance and a ladder truck.”'],
+      [90, 'act', 'Drop the band on the pillow and leave it still → mayday in ~16 s'],
+      [120, 'act', 'Drop it again, then DOUBLE-TAP during the countdown → acknowledged'],
+      [140, 'listen', 'Listen: MED-1 transports the red patient → hospital pre-alert'],
+      [160, 'act', 'Click End incident (twice) for the report'],
+    ],
+    scripted: [
+      [0, 'listen', 'Captain (pretend band): on scene, smoke on floor 3'],
+      [20, 'listen', 'Captain: two victims, adult not breathing, child coughing'],
+      [40, 'listen', 'MED-1 takes the red patient'],
+      [60, 'listen', 'PD-1: Oak and 3rd blocked, reroute via Pine'],
+      [75, 'listen', 'Captain requests a second ambulance and a ladder truck'],
+      [90, 'listen', 'The band falls and stays still → mayday'],
+      [120, 'listen', 'Falls again, double-tapped → acknowledged'],
+      [140, 'listen', 'MED-1 transports → hospital pre-alert'],
+      [160, 'act', 'Click End incident (twice) for the report'],
+    ],
+  };
+  let cueMode = null, cueStart = 0, cueTimer = null;
+  const mmss = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+  function showCues(mode, startTs) {
+    cueMode = mode; cueStart = startTs; clearInterval(cueTimer);
+    $('cue').hidden = false;
+    const tick = () => {
+      const t = Date.now() / 1000 - cueStart, list = CUES[cueMode];
+      let i = list.findIndex(([at]) => at > t - 8);              // a cue stays "now" for 8 s
+      if (i < 0) { $('cue').hidden = true; clearInterval(cueTimer); return; }
+      const [at, kind, text] = list[i];
+      const now = t >= at;
+      $('cuelabel').textContent = now ? 'Now' : 'Next';
+      if ($('cuetext').textContent !== text) { $('cuetext').textContent = text; animateEvent($('cuetext')); }
+      $('cuetime').textContent = now ? mmss(t) : 'in ' + Math.ceil(at - t) + ' s';
+      $('cue').className = (kind === 'say' || kind === 'act') && now ? 'act' : '';
+    };
+    tick(); cueTimer = setInterval(tick, 500);
+  }
   twoStep($('stop'), 'Stop', 'Click again to stop', async () => {
     const r = await post('/incident/stop');
     if (r && r.ok) say('Incident stopped. The agents stopped listening.');
@@ -261,7 +475,7 @@
   $('report').onclick = (ev) => { if (ev.target === $('report')) closeReport(); };       // click outside the document
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeReport(); });
   function ended(why) {                    // incident over: Stop is off, Start is the next step
-    $('over').hidden = false;
+    $('over').hidden = false; $('cue').hidden = true; clearInterval(cueTimer);
     $('livepulse').classList.remove('on'); $('stop').disabled = true; $('stop').title = why;
     $('start').textContent = 'Start new incident';
   }
@@ -279,6 +493,7 @@
   function add(r) {
     const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     if (partialEl && partialEl.isConnected) log.insertBefore(r, partialEl); else log.appendChild(r);
+    animateEvent(r);
     if (stick) log.scrollTop = log.scrollHeight;
   }
   function setPartial(e) {
@@ -294,29 +509,23 @@
     lastState = s;
     $('address').textContent = s.address ? '· ' + s.address : '';
     // alerts (newest first)
-    const A = $('alerts'); A.replaceChildren();
-    if (!s.alerts.length) A.append(el('div', 'none', 'No alerts'));
-    for (const a of [...s.alerts].reverse()) {
+    syncGroup('alerts', [...s.alerts].reverse(), 'No alerts', (a) => {
       const d = el('div', 'alert ' + a.severity);
       d.append(el('div', 'k', ({ mayday: 'Mayday', ack: 'Acknowledged', prealert: 'Hospital pre-alert' }[a.kind] || a.kind) + ' · ' + hhmmss(a.ts) + (a.audio ? ' · 🔊' : '')), el('div', '', a.text));
-      A.append(d);
-    }
+      return d;
+    });
     // coach prompts (newest first)
-    const C = $('coach'); C.replaceChildren();
-    if (!(s.coaching || []).length) C.append(el('div', 'none', 'No guidance yet'));
-    for (const c of [...(s.coaching || [])].reverse()) {
+    syncGroup('coach', [...(s.coaching || [])].reverse(), 'No guidance yet', (c) => {
       const d = el('div', 'coach ' + c.priority);
       d.append(el('div', 'k', '→ ' + (c.to === 'ALL' ? 'all crews' : c.to) + ' · ' + c.priority + ' · ' + hhmmss(c.ts) + (c.audio ? ' · 🔊' : '')), el('div', 'msg', c.message));
       const ol = el('ol'); for (const step of c.steps) ol.append(el('li', '', step)); d.append(ol);
-      C.append(d);
-    }
+      return d;
+    });
     // patients
-    const P = $('patients'); P.replaceChildren();
     $('pcount').textContent = s.patients.length;
     const T = $('tcounts'); T.replaceChildren();
     for (const c of ['red', 'yellow', 'green', 'black']) { const n = s.patients.filter((p) => p.triage === c).length; if (n) T.append(el('span', 'pill ' + c, n + ' ' + c)); }
-    if (!s.patients.length) P.append(el('div', 'none', 'No patients reported'));
-    for (const p of s.patients) {
+    syncGroup('patients', s.patients, 'No patients reported', (p) => {
       const c = el('div', 'card ' + (p.triage || ''));
       c.dataset.id = p.id;
       const title = el('div', 'title');
@@ -327,24 +536,20 @@
       if (p.conditions.length || p.notes.length) c.append(el('div', 'sub', [...p.conditions, ...p.notes].join(' · ')));
       if (p.triage_history.length > 1) c.append(el('div', 'sub', 'triage: ' + p.triage_history.map((h) => h.to.toUpperCase()).join(' → ')));
       if (p.vision) c.append(el('div', 'vision', p.vision));
-      P.append(c);
-    }
+      return c;
+    });
     // requests and actions
-    const R = $('requests'); R.replaceChildren();
-    if (!s.requests.length) R.append(el('div', 'none', 'None'));
-    for (const r of s.requests) {
+    syncGroup('requests', s.requests, 'None', (r) => {
       const d = el('div', 'item ' + (r.category === 'action' ? 'action' : r.status) + (r.status !== 'open' ? ' done' : ''));
       d.append(el('span', 'k', r.category === 'action' ? 'Action' : r.status), el('span', '', r.description), el('span', 'muted', ' · ' + r.requested_by));
-      R.append(d);
-    }
+      return d;
+    });
     // hazards
-    const H = $('hazards'); H.replaceChildren();
-    if (!s.hazards.length) H.append(el('div', 'none', 'None'));
-    for (const h of s.hazards) {
+    syncGroup('hazards', s.hazards, 'None', (h) => {
       const d = el('div', 'item');
       d.append(el('span', 'k', h.kind.replace(/_/g, ' ')), el('span', '', h.description + (h.floor != null ? ` (floor ${h.floor})` : '') + (h.location ? ` @ ${h.location}` : '')), el('span', 'muted', ' · ' + h.reported_by));
-      H.append(d);
-    }
+      return d;
+    });
   }
 
   // tiny, safe markdown: headings, lists, bold. Built with DOM nodes, never innerHTML.
@@ -365,7 +570,7 @@
   function handle(e) {
     switch (e.type) {
       case 'incident_started':
-        if (e.demo) say('Scripted demo running: captain lines at 0:00, 0:20, 1:15 · falls at 1:30 and 2:00 · ~3 min. Click Sound on for the video.');
+        if (e.demo) { showCues(e.demo_mode || 'scripted', e.started || e.ts); say('Demo running (~3 min). Follow the cue card. Click Sound on for the video.'); }
         started = e.started || e.ts;
         log.replaceChildren(el('div', '', '')); log.firstChild.id = 'empty'; log.firstChild.textContent = 'Incident started. Listening…';
         $('incidenttext').textContent = 'Incident ' + (e.incident_id || '') + ' · ' + hhmmss(started); $('livepulse').classList.add('on');
@@ -375,6 +580,7 @@
         $('report').classList.remove('show');
         break;
       case 'replay_done': live = true; break;
+      case 'speech': playSpeech(e); break;
       case 'bridge_status': {
         lastBeat = Date.now();
         if (e.band) { $('banddot').classList.add('on'); $('bandstatus').textContent = e.band + ' · listening'; }
@@ -420,7 +626,7 @@
   }
   connect();
   async function agentsLine() {
-    try { const h = await (await fetch('http://127.0.0.1:4111/health')).json(); $('agentsline').textContent = 'Agents on · voice ' + (h.speech.minimax === 'on' ? 'MiniMax' : h.speech.elevenlabs === 'on' ? 'ElevenLabs' : 'Gemini'); }
+    try { const h = await (await fetch('/agents/health')).json(); $('agentsline').textContent = 'Agents on · voice ' + (h.speech.minimax === 'on' ? 'MiniMax' : h.speech.elevenlabs === 'on' ? 'ElevenLabs' : 'Gemini'); }
     catch { $('agentsline').textContent = 'Agents off'; }
   }
   agentsLine(); setInterval(agentsLine, 10000);

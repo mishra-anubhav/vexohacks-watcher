@@ -7,6 +7,7 @@ its offset ("at", seconds) from the start of the current incident.
 Each line becomes {"type": "transcript", "responder": "MED-1", "source": "sim", "text": ...}.
 """
 import argparse
+import os
 import json
 import sys
 import time
@@ -30,7 +31,7 @@ def get(path):
 
 def post(event):
     req = urllib.request.Request(args.server + "/events", data=json.dumps(event).encode(), method="POST",
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", "X-Board-Token": os.environ.get("BOARD_TOKEN", "")})
     urllib.request.urlopen(req, timeout=5).close()
 
 

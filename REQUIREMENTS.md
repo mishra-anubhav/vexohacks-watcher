@@ -1,4 +1,4 @@
-# Incident Copilot — requirements and test cases
+# Watcher — requirements and test cases
 
 Scenario: apartment fire at 412 Oak St. FIRE-CPT-1 wears Vexo band 60 (voice, falls, double-tap).
 MED-1 and PD-1 are simulated from `sim/script.json`. The body-cam feed is a real helmet-cam

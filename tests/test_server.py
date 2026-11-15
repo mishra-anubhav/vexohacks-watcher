@@ -183,6 +183,16 @@ class ServerTest(unittest.TestCase):
         self.assertEqual([e["type"] for e in log["events"]][-1], "incident_stopped")
         self.assertTrue(any(e["type"] == "incident_stopped" for e in self.agents.received))
 
+    def test_T4_2_vexo_demo_keeps_the_real_band(self):
+        r = self.post("/demo/start", {"mode": "vexo"})
+        log = self.get("/incident/log")
+        start = log["events"][0]
+        self.assertEqual((start["type"], start.get("demo"), start.get("demo_mode")), ("incident_started", True, "vexo"))
+        # the real band (no "sim" flag) is heard in vexo mode
+        self.post("/events", {"type": "transcript", "source": "band", "responder": "FIRE-CPT-1", "text": "real band line"})
+        self.assertTrue(any(e.get("text") == "real band line" for e in self.get("/incident/log")["events"]))
+        self.post("/demo/stop")
+
     # ---- R4 simulated responders
     def test_T4_1_responders_play_on_time(self):
         script = Path(self.logdir) / "script.json"
@@ -219,6 +229,97 @@ class ServerTest(unittest.TestCase):
         for marker in ('id="video"', 'id="log"', 'id="patients"', 'id="hazards"', 'id="requests"', 'id="alerts"', 'id="coach"',
                        'id="end"'):
             self.assertIn(marker, html)
+
+
+class HostedModeTest(unittest.TestCase):
+    """T14: hosted board. Watching is public; changing anything needs the operator key."""
+
+    @classmethod
+    def setUpClass(cls):
+        import os
+        cls.port = free_port()
+        cls.base = "http://127.0.0.1:%d" % cls.port
+        env = dict(os.environ, BOARD_TOKEN="test-key-123", BROWSER_AUDIO="1")
+        cls.proc = subprocess.Popen([PY, str(ROOT / "server" / "server.py"), "--camera", "video:%s" % VIDEO, "--port", str(cls.port),
+                                     "--agents", "", "--logdir", tempfile.mkdtemp()], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(50):
+            try:
+                urllib.request.urlopen(cls.base + "/status", timeout=1)
+                break
+            except OSError:
+                time.sleep(0.1)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.proc.terminate()
+        cls.proc.wait(5)
+
+    def req(self, path, method="GET", headers=None):
+        r = urllib.request.Request(self.base + path, data=b"{}" if method == "POST" else None, method=method, headers=headers or {})
+        return urllib.request.urlopen(r, timeout=5)
+
+    def test_T14_1_viewer_can_watch_not_change(self):
+        s = json.load(self.req("/status"))
+        self.assertFalse(s["can_write"])
+        self.assertTrue(s["browser_audio"])
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self.req("/incident/start", "POST")
+        self.assertEqual(cm.exception.code, 403)
+        self.assertEqual(self.req("/app").status, 200)
+
+    def test_T14_3_refused_post_does_not_break_a_reused_connection(self):
+        # Superserve's proxy reuses connections: a 403 must still consume the body
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        c.request("POST", "/incident/start", body=b'{"x": 1}', headers={"Content-Type": "application/json"})
+        r = c.getresponse(); r.read()
+        self.assertEqual(r.status, 403)
+        c.request("GET", "/status")
+        r = c.getresponse(); r.read()
+        self.assertEqual(r.status, 200)
+
+    def test_T16_phone_camera_pairing_and_frames(self):
+        op = {"X-Board-Token": "test-key-123", "Content-Type": "application/json"}
+        pair = json.load(self.req("/camera/pair", headers=op))
+        cam_key = pair["url"].split("key=")[1]
+        self.assertNotEqual(cam_key, "test-key-123")                       # a separate, camera-only key
+        jpg = (ROOT / "agents" / "test" / "live" / "frame45.jpg")
+        data = jpg.read_bytes() if jpg.exists() else b"\xff\xd8" + b"0" * 2000
+        def frame(headers):
+            r = urllib.request.Request(self.base + "/camera/frame", data=data, method="POST", headers=dict(headers, **{"Content-Type": "image/jpeg"}))
+            return json.load(urllib.request.urlopen(r, timeout=5))
+        with self.assertRaises(urllib.error.HTTPError):                    # no key: refused
+            frame({})
+        self.assertIn("ignored", frame({"X-Cam-Token": cam_key}))          # video selected: ignored
+        r = urllib.request.Request(self.base + "/camera/source", data=b'{"source": "phone"}', method="POST", headers=op)
+        urllib.request.urlopen(r, timeout=5)
+        self.assertEqual(frame({"X-Cam-Token": cam_key}), {"ok": True})
+        s = json.load(self.req("/status"))
+        self.assertEqual(s["camera_source"], "phone")
+        self.assertIsNone(s["video_url"])
+        self.assertLess(s["phone_age"], 2)
+        self.assertEqual(self.req("/frame.jpg").read(), data)              # the vision agent sees the phone frame
+        with self.assertRaises(urllib.error.HTTPError) as cm:              # the camera key cannot control the board
+            urllib.request.urlopen(urllib.request.Request(self.base + "/incident/start", data=b"{}", method="POST",
+                                                          headers={"X-Cam-Token": cam_key}), timeout=5)
+        self.assertEqual(cm.exception.code, 403)
+        r = urllib.request.Request(self.base + "/camera/source", data=b'{"source": "video"}', method="POST", headers=op)
+        urllib.request.urlopen(r, timeout=5)
+
+    def test_T14_2_operator_key_header_and_link(self):
+        self.assertEqual(self.req("/incident/start", "POST", {"X-Board-Token": "test-key-123"}).status, 200)
+        with self.assertRaises(urllib.error.HTTPError):
+            self.req("/incident/start", "POST", {"X-Board-Token": "wrong"})
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a):
+                return None
+        opener = urllib.request.build_opener(NoRedirect)
+        with self.assertRaises(urllib.error.HTTPError) as cm:            # 302 surfaces as an error without redirects
+            opener.open(self.base + "/app?key=test-key-123", timeout=5)
+        self.assertEqual(cm.exception.code, 302)
+        cookie = cm.exception.headers["Set-Cookie"].split(";")[0]
+        self.assertTrue(json.load(self.req("/status", headers={"Cookie": cookie}))["can_write"])
 
 
 if __name__ == "__main__":

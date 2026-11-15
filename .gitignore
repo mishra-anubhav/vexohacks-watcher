@@ -26,3 +26,6 @@ media/*_audio.ogg
 # empty placeholder folders
 dashboard/
 agents/test/live/frame45.jpg
+
+# Superserve deployment
+deploy/.sandbox-id

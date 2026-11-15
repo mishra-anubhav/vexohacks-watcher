@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Body cam · phone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inclusive+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/tokens.css">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+  .top { display: flex; align-items: center; gap: 10px; }
+  .top b { font-weight: 500; font-size: 17px; }
+  h1 { font-size: 30px; font-weight: 500; letter-spacing: -0.01em; margin: 4px 0 0; line-height: 1.1; }
+  p { margin: 0; color: rgba(14,17,19,.75); }
+  .frame { flex: 1; min-height: 240px; background: var(--forest); border-radius: 16px; overflow: hidden; position: relative; }
+  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .live { position: absolute; top: 12px; left: 12px; }
+  .btn.lg { height: 52px; font-size: 17px; justify-content: center; }
+  .stat { font-family: var(--mono); font-size: 12px; color: rgba(14,17,19,.6); letter-spacing: .04em; }
+  .stat.bad { color: var(--danger); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--terracotta); margin-right: 6px; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+</style>
+</head>
+<body>
+  <div class="top"><span class="mark" aria-hidden="true"></span><b>Watcher</b></div>
+  <span class="label-pill" style="align-self:flex-start">Body cam · phone</span>
+  <h1>Point it at the scene.</h1>
+  <p>This phone is the camera. The Vexo band is the microphone.</p>
+  <div class="frame"><video id="v" playsinline muted autoplay></video><span class="label-pill on-dark live" id="livepill" hidden><span class="dot"></span>Sending</span></div>
+  <button class="btn lg" id="go">Start camera</button>
+  <span class="stat" id="stat">Not started</span>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const FPS = 5, WIDTH = 640, QUALITY = 0.6;
+  let stream = null, timer = null, busy = false, sent = 0, lastErr = '', wake = null;
+  const canvas = document.createElement('canvas');
+  function stat(text, bad = false) { $('stat').textContent = text; $('stat').className = 'stat' + (bad ? ' bad' : ''); }
+
+  async function start() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false });
+    } catch (e) { stat('Camera blocked: allow camera access for this site, then try again. (' + e.name + ')', true); return; }
+    $('v').srcObject = stream;
+    try { wake = await navigator.wakeLock?.request('screen'); } catch {}       // keep the screen on while filming
+    $('go').textContent = 'Stop camera'; $('livepill').hidden = false;
+    timer = setInterval(send, 1000 / FPS);
+  }
+  function stop() {
+    clearInterval(timer); timer = null;
+    stream?.getTracks().forEach((t) => t.stop()); stream = null;
+    wake?.release?.(); wake = null;
+    $('go').textContent = 'Start camera'; $('livepill').hidden = true; stat('Stopped. ' + sent + ' frames sent.');
+  }
+  async function send() {
+    const v = $('v');
+    if (busy || !v.videoWidth) return;                    // one upload at a time: never build a backlog
+    busy = true;
+    canvas.width = WIDTH; canvas.height = Math.round(WIDTH * v.videoHeight / v.videoWidth);
+    canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', QUALITY));
+    try {
+      const r = await fetch('/camera/frame', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+      const j = r.ok ? await r.json() : null;
+      if (r.status === 403) { stat('Not paired: scan the QR code on the board again.', true); stop(); }
+      else if (j && j.ignored) stat('Connected. The board is showing the video: select Phone camera on the board.');
+      else if (r.ok) { sent++; stat('Live · ' + sent + ' frames sent · ' + FPS + ' per second'); }
+      else stat('Upload failed (' + r.status + '), retrying…', true);
+    } catch { stat('No connection, retrying…', true); }
+    busy = false;
+  }
+  $('go').onclick = () => (stream ? stop() : start());
+  document.addEventListener('visibilitychange', async () => { if (stream && document.visibilityState === 'visible') { try { wake = await navigator.wakeLock?.request('screen'); } catch {} } });
+</script>
+</body>
+</html>

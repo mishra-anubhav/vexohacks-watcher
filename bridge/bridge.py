@@ -18,6 +18,7 @@ Note: the LED stays solid blue the whole time (microphone on), so the band canno
 alarm. The countdown is shown by the dashboard / spoken instead.
 """
 import argparse
+import os
 import json
 import queue
 import sys
@@ -93,12 +94,25 @@ def _poster():
         line = _posts.get()
         try:
             req = urllib.request.Request(args.post, data=line.encode("utf-8"), method="POST",
-                                         headers={"Content-Type": "application/json"})
+                                         headers={"Content-Type": "application/json", "X-Board-Token": BOARD_TOKEN})
             urllib.request.urlopen(req, timeout=3).close()
         except Exception as error:   # server down or slow: drop it, never block the band
             print("post failed: %s" % type(error).__name__, file=sys.stderr, flush=True)
 
 
+def _board_token():
+    """Operator key for a hosted board: env BOARD_TOKEN, or BOARD_TOKEN= in .env."""
+    tok = os.environ.get("BOARD_TOKEN", "")
+    try:
+        for line in open(ROOT / ".env", encoding="utf-8"):
+            if not tok and line.startswith("BOARD_TOKEN="):
+                tok = line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return tok
+
+
+BOARD_TOKEN = _board_token()
 if args.post:
     threading.Thread(target=_poster, daemon=True).start()
 

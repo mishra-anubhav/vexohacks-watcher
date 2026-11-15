@@ -2,7 +2,7 @@
 // no key, missing permission or no credits is skipped for the rest of the run, so an alert is
 // never silent. Clips are cached by text and played one at a time.
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { AUDIO_DIR, SPEECH } from './config.ts'
@@ -131,7 +131,15 @@ function next() {
 }
 
 export function playLocally(file: string, urgent = false, text = ''): void {
-  if (!SPEECH.playLocally) return
+  if (!SPEECH.playLocally) {
+    // played by the operator's browser instead: estimate its length so the echo guard still knows
+    const bytes = statSync(file).size
+    const seconds = file.endsWith('.wav') ? bytes / 48000 : bytes * 8 / 128000
+    const start = Date.now() / 1000
+    played.push({ text, start, end: start + seconds + 1 })
+    if (played.length > 50) played.shift()
+    return
+  }
   if (urgent) {
     pending.unshift({ file, text })
     current?.kill()

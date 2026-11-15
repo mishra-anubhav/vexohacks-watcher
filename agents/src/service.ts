@@ -63,8 +63,10 @@ const log = (...a: unknown[]) => console.log(new Date().toISOString().slice(11, 
 
 async function post(event: Record<string, unknown>) {
   try {
-    await fetch(`${BUS}/events`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const r = await fetch(`${BUS}/events`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Board-Token': process.env.BOARD_TOKEN ?? '' },   // hosted board: operator key
       body: JSON.stringify({ source: 'agents', ts: now(), ...event }) })
+    if (!r.ok) { stats.errors.push(`bus refused ${event.type}: ${r.status}`); log(`bus refused ${event.type}: ${r.status}`) }
   } catch (e) {
     log('bus not reachable:', String(e))
   }
@@ -81,7 +83,7 @@ function addAlert(a: Omit<Alert, 'id' | 'ts'>): Alert {
 async function speak(alert: Alert, style: string, spokenText = alert.text, urgent = false) {
   try {
     const s = await synthesize(spokenText, style, urgent ? 'urgent' : 'calm')
-    alert.audio = `${SELF}/audio/${s.name}`
+    alert.audio = `/agents/audio/${s.name}`
     await post({ type: 'speech', alert_id: alert.id, kind: alert.kind, text: spokenText, url: alert.audio, provider: s.provider })
     publishState()
     playLocally(s.file, urgent, spokenText)
@@ -187,7 +189,8 @@ ${summarizeForAgent(state)}`,
     await publishState()
     if (COACH.speak) {
       const s = await synthesize(`${t.to === 'ALL' ? 'All crews' : t.to.replace(/-/g, ' ')}. ${prompt.message}`, 'coach', 'coach')
-      prompt.audio = `${SELF}/audio/${s.name}`
+      prompt.audio = `/agents/audio/${s.name}`
+      await post({ type: 'speech', kind: 'coach', text: prompt.message, url: prompt.audio, provider: s.provider })
       await publishState()
       playLocally(s.file, false, `${t.to === 'ALL' ? 'All crews' : t.to.replace(/-/g, ' ')}. ${prompt.message}`)
     }
@@ -222,7 +225,7 @@ async function describePatient(id: string) {
     if (state.incident_id !== incident) return                       // a new incident started meanwhile
     const p = state.patients.find((x) => x.id === id)
     if (!p) return
-    p.image = `${SELF}/frames/${name}`
+    p.image = `/agents/frames/${name}`
     p.vision = res.text.trim().replace(/\s+/g, ' ')
     stats.vision_ms.push(Date.now() - t0)
     state.timeline.push({ ts: now(), who: 'VISION', kind: 'vision', text: `${id} camera: ${p.vision}` })
@@ -369,6 +372,6 @@ const server = createServer(async (req, res) => {
   send(404, { error: 'not found' })
 })
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, process.env.AGENTS_HOST ?? '127.0.0.1', () => {
   log(`agents service http://127.0.0.1:${PORT}  bus ${BUS}  models ${JSON.stringify(MODELS)}  speech ${JSON.stringify(speechStatus())}`)
 })

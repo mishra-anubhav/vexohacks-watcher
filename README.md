@@ -1,4 +1,4 @@
-# Incident Copilot
+# Watcher
 
 **Responders talk. The board fills itself.**
 
@@ -28,7 +28,7 @@ conversations near the band are ignored. Everything the coach says is advisory: 
 
 ## Sponsors
 
-| Sponsor | How Incident Copilot uses it | Status |
+| Sponsor | How Watcher uses it | Status |
 |---|---|---|
 | **VEXO** | The captain's wristband: microphone for the radio voice, fall and stillness detection (countdown → mayday), double-tap "I'm OK" | In the app |
 | **Google DeepMind** | Gemini 3.1 Flash-Lite runs the intake agent (speech → board) and the coach; Gemini 3.8 Flash runs the vision agent (body-cam frame → casualty description); Gemini TTS is the last-resort voice | In the app |
@@ -36,7 +36,7 @@ conversations near the band are ignored. Everything the coach says is advisory: 
 | **Mastra** | The agent framework: five agents with structured output, model fallback chains, and the post-incident workflow (exact metrics → analyst agent → report) | In the app |
 | **OpenAI** | gpt-6-luna is the fallback model behind every agent, so the board keeps working if a primary model fails | In the app (fallback) |
 | **ElevenLabs** | Wired in as the second voice in the speech chain (MiniMax → ElevenLabs → Gemini) | Standby: needs a key with Text to Speech access |
-| **Superserve** | Sandboxed agent hosting with Mastra support: the next step for running the agents off the laptop | Not yet used |
+| **Superserve** | Hosts the live board and the Mastra agents in a sandbox (Firecracker microVM) with a public preview URL; the laptop keeps only the band's Bluetooth bridge | In the app |
 | **Stripe** | Event sponsor. Thank you for supporting VexoHacks | Not used |
 | **Brex** | Event sponsor. Thank you for supporting VexoHacks | Not used |
 
@@ -67,6 +67,34 @@ Speech-to-text by **Deepgram** (nova-3, streaming).
   (alerts, coaching) or the body-cam video's own speech.
 - Every model call has a fallback, and every voice has a fallback: the demo never goes silent.
 
+## Hosted on Superserve
+
+The board and the agents run in a [Superserve](https://superserve.ai) sandbox, so anyone can open
+the live board from a phone while the captain speaks into the band. The laptop keeps only the
+band bridge (Bluetooth has to be local), which posts events to the hosted board.
+
+```
+ Vexo band ──BLE──► laptop: bridge/run.sh ──HTTPS──► Superserve sandbox
+                                                       server.py :8090  ── public preview URL
+                                                       agents (Mastra) :4111 (behind the board, /agents/…)
+```
+
+- **Watching is public, controlling is not.** Without the operator key the board is view-only.
+  The key (`BOARD_TOKEN`, generated on first deploy, kept in `.env`) is sent by the bridge, and an
+  operator opens `<board>/app?key=<BOARD_TOKEN>` once to get the buttons.
+- **Audio plays in the operator's browser** (the cloud has no speakers): click **Sound on**.
+- Deploy, check, remove:
+
+```bash
+node deploy/superserve.ts            # create or update the sandbox, start everything, print the URL
+node deploy/superserve.ts --status
+node deploy/superserve.ts --kill
+.venv/bin/python tests/hosted_e2e.py # the 9-step script against the hosted board
+```
+
+`deploy/superserve.ts` needs `SUPERSERVE_API_KEY` in `.env` and the model keys; the band bridge
+then posts to `BOARD_URL` from `.env` automatically.
+
 ## Setup
 
 Requirements: macOS, Python 3.9+, Node 22.18+ (runs TypeScript directly), ffmpeg, a Vexo band.
@@ -88,7 +116,10 @@ cd agents && npm install && cd ..
 
 # 5. the body-cam test video (not in this repo; for local testing only)
 yt-dlp -f "bv*[height<=720][ext=mp4]+ba[ext=m4a]" --merge-output-format mp4 \
-  -o media/helmetcam.mp4 "https://www.youtube.com/watch?v=BflKuEpn7QY"
+  -o media/helmetcam.av1.mp4 "https://www.youtube.com/watch?v=BflKuEpn7QY"
+# H.264, so it plays in every browser and decodes in the cloud sandbox
+ffmpeg -i media/helmetcam.av1.mp4 -c:v libx264 -crf 23 -pix_fmt yuv420p -c:a aac \
+  -movflags +faststart media/helmetcam.mp4
 ```
 
 The band number is set once, as `BAND` in `bridge/bridge.py`.
@@ -103,11 +134,16 @@ bridge/run.sh                                     # double-tap the band; reconne
 
 On the board:
 
-- **Run demo** (two clicks) plays the whole 3-minute script with a pretend band, no hardware needed.
-- **Start incident** (two clicks) starts a clean incident for a live run with the real band.
-  Add the simulated medic and police with `.venv/bin/python sim/responders.py`.
-- **Stop** stops the agents listening; **End incident** writes the report.
-- **Sound on** plays the body-cam video's audio.
+- **Run demo ▾** runs the 3-minute script in one of two modes:
+  - **Scripted voice**: a pretend band speaks the captain's lines, falls and double-taps. No hardware.
+  - **Live Vexo band**: you are the captain on the real band; MED-1 and PD-1 play automatically.
+  A cue card above the transcript shows what to say or do next, with a countdown.
+- **Start incident** (two clicks) starts a clean incident for a free-form live run.
+- **Stop** stops the agents listening (two clicks); **End incident** writes the report (two clicks).
+- **Sound on** plays the body-cam video's audio and the spoken alerts.
+- **Video clip / Phone camera** picks the body cam. For the phone, the board shows a QR code: scan
+  it, tap **Start camera**, and the phone streams its rear camera (5 frames a second) to the board.
+  The QR carries a camera-only key: it can send frames, nothing else. The Vexo band stays the microphone.
 
 Use `--camera iphone` on the server for a live iPhone body cam (Continuity Camera).
 

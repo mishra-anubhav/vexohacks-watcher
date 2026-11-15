@@ -21,15 +21,29 @@ Endpoints
     POST /incident/start   start a new incident (clears the log)
     POST /incident/stop    stop the incident: agents stop listening (report still possible)
     POST /incident/end     ask the agents for the post-incident report
-    POST /demo/start       start a fresh incident and play the 3-minute script (pretend band + MED-1/PD-1)
+    POST /demo/start       start a fresh incident and the 3-minute script. Body {"mode": "scripted"}: a pretend
+                           band speaks the captain's lines; {"mode": "vexo"}: the real band (you) is the captain,
+                           MED-1/PD-1 play automatically and the page shows cue cards
     POST /demo/stop        stop the scripted demo
+    GET  /cam              phone camera page (open on the phone via the pairing QR code)
+    GET  /camera/pair      operator: the phone's pairing link (camera-only key)
+    POST /camera/source    operator: {"source": "video" | "phone"}
+    POST /camera/frame     a JPEG from the phone (camera-only key or operator key)
 
 Every event that does not come from the agents themselves is forwarded to the agents
 service (--agents, default http://127.0.0.1:4111/event). The agents post their results
 (incident_state, alert, speech, report) back to /events with "source": "agents".
-Only listens on 127.0.0.1.
+Only listens on 127.0.0.1, unless --host is given (hosted on Superserve: --host 0.0.0.0).
+
+Hosted mode (env BOARD_TOKEN set): anyone can watch, but every POST needs the operator key,
+either as the X-Board-Token header (bridge, scripts) or from opening the board once with
+?key=<token> (sets a cookie). GET /agents/... is proxied to the agents service, so one public
+port serves everything. BROWSER_AUDIO=1 tells the page to play alerts itself (no laptop speakers).
 """
 import argparse
+import hashlib
+import hmac
+import os
 import subprocess
 import sys
 import itertools
@@ -37,6 +51,7 @@ import json
 import queue
 import threading
 import time
+import urllib.error
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -55,7 +70,15 @@ p.add_argument("--camera", default="video:" + str(ROOT / "media" / "helmetcam.mp
 p.add_argument("--port", type=int, default=8090)
 p.add_argument("--agents", default="http://127.0.0.1:4111/event", help="agents service ('' = off)")
 p.add_argument("--logdir", default=str(ROOT / "incidents"))
+p.add_argument("--host", default="127.0.0.1", help="0.0.0.0 when hosted")
 args = p.parse_args()
+TOKEN = os.environ.get("BOARD_TOKEN", "")
+# A separate key for the phone camera: it can only send frames, so a projected QR code
+# never hands out control of the board.
+CAM_TOKEN = os.environ.get("CAM_TOKEN") or hashlib.sha256(("cam:" + (TOKEN or "local")).encode()).hexdigest()[:24]
+camera = {"source": "video" if args.camera.startswith("video:") else "live", "phone_at": 0.0, "phone_frames": 0}
+BROWSER_AUDIO = os.environ.get("BROWSER_AUDIO") == "1"
+AGENTS_BASE = args.agents.rsplit("/", 1)[0] if args.agents else ""
 
 # ---- camera ------------------------------------------------------------------------------
 
@@ -67,6 +90,16 @@ latest_lock = threading.Lock()
 def set_status(text):
     with latest_lock:
         latest["status"] = text
+
+
+def publish_jpeg(jpg):
+    """A frame that is already a JPEG (from the phone)."""
+    with latest_lock:
+        latest["jpg"], latest["at"] = jpg, time.time()
+        latest["frames"] += 1
+    camera["phone_at"] = time.time()
+    camera["phone_frames"] += 1
+    latest["status"] = "Phone camera · live"
 
 
 def publish(frame, video_pos=None):
@@ -124,7 +157,11 @@ def video_loop(path):
                 time.sleep(delay)
             elif delay < -0.5:          # fell behind: skip frames to stay real-time
                 continue
-            publish(frame, round(n / fps, 2))
+            if camera["source"] == "video":
+                publish(frame, round(n / fps, 2))
+            else:
+                with latest_lock:
+                    latest["video_pos"] = round(n / fps, 2)
         cam.release()
 
 
@@ -233,6 +270,7 @@ if args.agents:
 
 
 demo_procs = []
+demo_mode = {"mode": None}
 
 
 def stop_demo():
@@ -242,18 +280,22 @@ def stop_demo():
     demo_procs.clear()
 
 
-def start_demo():
+def start_demo(mode="scripted"):
     """The same script as tests/e2e.py: a pretend band 60 speaks the captain's lines (through
     Deepgram), falls at 1:30 (mayday) and 2:00 (double-tap), MED-1/PD-1 lines at 0:40, 1:00, 2:20."""
     stop_demo()
+    demo_mode["mode"] = mode
     py = sys.executable
     base = "http://127.0.0.1:%d" % args.port
     logs = Path(args.logdir) / "demo-logs"
     logs.mkdir(parents=True, exist_ok=True)
-    for name, cmd in (("bridge", [py, str(ROOT / "bridge" / "bridge.py"), "--sim", "--replay", str(ROOT / "sim" / "cpt1_e2e.ogg"),
-                                  "--falls", "90,120", "--taps", "128", "--seconds", "175", "--post", base + "/events", "--log", ""]),
-                      ("responders", [py, str(ROOT / "sim" / "responders.py"), "--server", base])):
-        demo_procs.append(subprocess.Popen(cmd, cwd=str(ROOT), stdout=open(logs / (name + ".log"), "w"), stderr=subprocess.STDOUT))
+    procs = [("responders", [py, str(ROOT / "sim" / "responders.py"), "--server", base])]
+    if mode == "scripted":
+        procs.insert(0, ("bridge", [py, str(ROOT / "bridge" / "bridge.py"), "--sim", "--replay", str(ROOT / "sim" / "cpt1_e2e.ogg"),
+                                    "--falls", "90,120", "--taps", "128", "--seconds", "175", "--post", base + "/events", "--log", ""]))
+    for name, cmd in procs:
+        demo_procs.append(subprocess.Popen(cmd, cwd=str(ROOT), stdout=open(logs / (name + ".log"), "w"), stderr=subprocess.STDOUT,
+                                           env=dict(os.environ, BOARD_TOKEN=TOKEN)))
 
 
 def start_incident(fields):
@@ -287,8 +329,61 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, code, obj):
         self._send(code, json.dumps(obj).encode())
 
+    def _has_cam_key(self):
+        given = self.headers.get("X-Cam-Token", "")
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "cam_key":
+                given = given or v
+        return bool(given) and hmac.compare_digest(given, CAM_TOKEN)
+
+    def _can_write(self):
+        if not TOKEN:
+            return True
+        given = self.headers.get("X-Board-Token", "")
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "board_key":
+                given = given or v
+        return hmac.compare_digest(given, TOKEN)
+
     def do_GET(self):
         path = self.path.split("?")[0]
+        query = self.path.partition("?")[2]
+        if path == "/app" and TOKEN and "key=" in query:          # operator link: remember the key in a cookie
+            key = [q.partition("=")[2] for q in query.split("&") if q.startswith("key=")][0]
+            if hmac.compare_digest(key, TOKEN):
+                self.send_response(302)
+                self.send_header("Set-Cookie", "board_key=%s; Path=/; HttpOnly; Secure; SameSite=Strict" % key)
+                self.send_header("Location", "/app")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+        if path == "/cam" and "key=" in query:                 # phone pairing link: remember the camera key
+            key = [q.partition("=")[2] for q in query.split("&") if q.startswith("key=")][0]
+            if hmac.compare_digest(key, CAM_TOKEN):
+                self.send_response(302)
+                self.send_header("Set-Cookie", "cam_key=%s; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=43200" % key)
+                self.send_header("Location", "/cam")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+        if path == "/cam":
+            return self._send(200, (HERE / "cam.html").read_bytes(), "text/html; charset=utf-8")
+        if path == "/camera/pair":
+            if not self._can_write():
+                return self._send(403, b"operator only", "text/plain")
+            host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host", "localhost:%d" % args.port)
+            proto = self.headers.get("X-Forwarded-Proto") or ("https" if "superserve" in host else "http")
+            return self._json(200, {"url": "%s://%s/cam?key=%s" % (proto, host, CAM_TOKEN)})
+        if path.startswith("/agents/") and AGENTS_BASE:          # proxy: health, audio, frames, state
+            try:
+                with urllib.request.urlopen(AGENTS_BASE + path[len("/agents"):], timeout=10) as r:
+                    return self._send(r.status, r.read(), r.headers.get("Content-Type", "application/octet-stream"))
+            except urllib.error.HTTPError as e:
+                return self._send(e.code, b"", "text/plain")
+            except OSError:
+                return self._send(502, b"agents service not reachable", "text/plain")
         if path in ("/", "/index.html"):
             self._send(200, (HERE / "landing.html").read_bytes(), "text/html; charset=utf-8")
         elif path in ("/app", "/app/"):
@@ -305,7 +400,12 @@ class Handler(BaseHTTPRequestHandler):
                 s = {"status": latest["status"], "frames": latest["frames"], "video_pos": latest["video_pos"],
                      "frame_age": round(time.time() - latest["at"], 2) if latest["at"] else None}
             s["incident_id"] = incident["id"]
-            s["video_url"] = "/media/" + VIDEO_FILE.name if VIDEO_FILE else None
+            s["video_url"] = "/media/" + VIDEO_FILE.name if VIDEO_FILE and camera["source"] == "video" else None
+            s["camera_source"] = camera["source"]
+            s["phone_age"] = round(time.time() - camera["phone_at"], 1) if camera["phone_at"] else None
+            s["has_video"] = bool(VIDEO_FILE)
+            s["browser_audio"] = BROWSER_AUDIO
+            s["can_write"] = self._can_write()
             self._json(200, s)
         elif path.startswith("/media/"):
             if not VIDEO_FILE or Path(path).name != VIDEO_FILE.name or not VIDEO_FILE.is_file():
@@ -321,6 +421,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(206 if rng else 200)
             self.send_header("Content-Type", "video/mp4")
             self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Cache-Control", "public, max-age=86400")   # the file never changes: let the browser keep it
             self.send_header("Content-Length", str(length))
             if rng:
                 self.send_header("Content-Range", "bytes %d-%d/%d" % (start, end, size))
@@ -394,8 +495,24 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
+        # Read the whole body first, even for a request we refuse: behind a proxy that reuses
+        # connections, an unread body would be parsed as the start of the next request (501).
         n = int(self.headers.get("Content-Length") or 0)
-        body = self.rfile.read(min(n, 2_000_000)).decode("utf-8", "replace") if n else "{}"
+        raw = self.rfile.read(min(n, 2_000_000)) if n else b"{}"
+        if n > 2_000_000:
+            self.close_connection = True
+        if self.path.split("?")[0] == "/camera/frame":
+            if not (self._can_write() or self._has_cam_key()):
+                return self._send(403, b"camera key needed: scan the pairing QR code on the board", "text/plain")
+            if raw[:2] != b"\xff\xd8":
+                return self._send(400, b"not a JPEG", "text/plain")
+            if camera["source"] != "phone":
+                return self._json(200, {"ignored": "the board is showing the video; select Phone camera"})
+            publish_jpeg(raw)
+            return self._json(200, {"ok": True})
+        body = raw.decode("utf-8", "replace")
+        if not self._can_write():
+            return self._send(403, b"view only: open the board with the operator key", "text/plain")
         try:
             event = json.loads(body)
             if not isinstance(event, dict):
@@ -406,16 +523,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/events":
             if not isinstance(event.get("type"), str):
                 return self._send(400, b"event needs a type", "text/plain")
-            demo_running = any(p.poll() is None for p in demo_procs)
+            demo_running = demo_mode["mode"] == "scripted" and any(p.poll() is None for p in demo_procs)
             if demo_running and event.get("source") == "band" and not event.get("sim") and event["type"] != "bridge_status":
                 return self._json(200, {"ignored": "real band muted while the scripted demo runs"})
             if incident["id"] is None and event["type"] not in ("bridge_status", "transcript_partial"):
                 start_incident({"reason": "first event"})
             return self._json(200, {"seq": broadcast(event)["seq"]})
         if path == "/demo/start":
-            e = start_incident({"scenario": "412 Oak St apartment fire (scripted demo)", "demo": True})
-            start_demo()
+            mode = "vexo" if event.get("mode") == "vexo" else "scripted"
+            e = start_incident({"scenario": "412 Oak St apartment fire (%s demo)" % mode, "demo": True, "demo_mode": mode})
+            start_demo(mode)
             return self._json(200, {"incident_id": incident["id"], "started": e["started"]})
+        if path == "/camera/source":
+            src = event.get("source")
+            if src not in ("video", "phone") or (src == "video" and not VIDEO_FILE):
+                return self._send(400, b"source must be video or phone", "text/plain")
+            camera["source"] = src
+            set_status("Phone camera · waiting for frames" if src == "phone" else "Recorded clip · played as live")
+            broadcast({"type": "camera_source", "source": src, "source_by": "console"})
+            return self._json(200, {"source": src})
         if path == "/demo/stop":
             stop_demo()
             return self._json(200, {"stopped": True})
@@ -438,7 +564,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 ThreadingHTTPServer.daemon_threads = True
-server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+server = ThreadingHTTPServer((args.host, args.port), Handler)
 print("Live screen: http://localhost:%d   camera: %s   agents: %s" % (args.port, args.camera, args.agents or "off"),
       flush=True)
 try:
