@@ -26,21 +26,25 @@ responder falls and stops moving, and write the after-action report.
 Spoken questions ("Should I go in?") get a direct, safety-first answer from the coach. Side
 conversations near the band are ignored. Everything the coach says is advisory: command decides.
 
-## Sponsors
+## Technologies used
 
-| Sponsor | How Watcher uses it | Status |
+| Technology | How Watcher uses it |
+|---|---|
+| **VEXO** | The captain's wristband: microphone for the radio voice, fall and stillness detection (countdown → mayday), double-tap "I'm OK" |
+| **Google DeepMind** | Gemini 3.1 Flash-Lite runs the intake agent (speech → board) and the coach; Gemini 3.8 Flash runs the vision agent (body-cam frame → casualty description); Gemini TTS is the last-resort voice |
+| **MiniMax** | MiniMax Speech 2.8 speaks the mayday, acknowledgements, pre-alerts and coaching (two voices); MiniMax-M3.1-Flash writes the hospital pre-alert; MiniMax-M3 writes the after-action review |
+| **Mastra** | The agent framework: five agents with structured output, model fallback chains, and the post-incident workflow (exact metrics → analyst agent → report) |
+| **OpenAI** | gpt-6-luna is the fallback model behind every agent, so the board keeps working if a primary model fails |
+| **Superserve** | Hosts the live board and the Mastra agents in a sandbox (Firecracker microVM) with a public preview URL; the laptop keeps only the band's Bluetooth bridge |
+| **Deepgram** | Streaming speech-to-text (nova-3) for the band's microphone |
+
+### Planned integrations
+
+| Technology | Status today | How it could fit Watcher |
 |---|---|---|
-| **VEXO** | The captain's wristband: microphone for the radio voice, fall and stillness detection (countdown → mayday), double-tap "I'm OK" | In the app |
-| **Google DeepMind** | Gemini 3.1 Flash-Lite runs the intake agent (speech → board) and the coach; Gemini 3.8 Flash runs the vision agent (body-cam frame → casualty description); Gemini TTS is the last-resort voice | In the app |
-| **MiniMax** | MiniMax Speech 2.8 speaks the mayday, acknowledgements, pre-alerts and coaching (two voices); MiniMax-M3.1-Flash writes the hospital pre-alert; MiniMax-M3 writes the after-action review | In the app |
-| **Mastra** | The agent framework: five agents with structured output, model fallback chains, and the post-incident workflow (exact metrics → analyst agent → report) | In the app |
-| **OpenAI** | gpt-6-luna is the fallback model behind every agent, so the board keeps working if a primary model fails | In the app (fallback) |
-| **ElevenLabs** | Wired in as the second voice in the speech chain (MiniMax → ElevenLabs → Gemini) | Standby: needs a key with Text to Speech access |
-| **Superserve** | Hosts the live board and the Mastra agents in a sandbox (Firecracker microVM) with a public preview URL; the laptop keeps only the band's Bluetooth bridge | In the app |
-| **Stripe** | Event sponsor. Thank you for supporting VexoHacks | Not used |
-| **Brex** | Event sponsor. Thank you for supporting VexoHacks | Not used |
-
-Speech-to-text by **Deepgram** (nova-3, streaming).
+| **ElevenLabs** | Wired in as the second voice (MiniMax → ElevenLabs → Gemini); waiting on a key with Text to Speech access | **Hands-free voice for responders.** An ElevenLabs conversational agent on the band: a responder asks "where is my second ambulance?" and hears the answer from the board, in their own language. Plus distinct voices per role (dispatch, coach, mayday) so a responder knows who is talking without looking |
+| **Stripe** | Not used yet | **Selling Watcher to departments.** Stripe Billing for per-responder seats and usage-based pricing per incident hour, so a small volunteer department pays for what it uses. Stripe Checkout for onboarding a new department in minutes, with invoices their city finance office can process |
+| **Brex** | Not used yet | **The cost of an incident, as it happens.** Every resource request on the board (second ambulance, ladder truck, mutual aid) becomes a tracked expense against the department's Brex budget. The after-action report then shows what the incident cost next to what happened, and Brex cards cover on-scene purchases (supplies, shelter for displaced residents) with receipts attached to the incident |
 
 ## How it works
 
